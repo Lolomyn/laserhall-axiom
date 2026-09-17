@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Laserhall Axiom
 // @namespace    https://laserhall.simprint.pro/
-// @version      53.4.0
+// @version      53.5.0
 // @description  
 // @match        https://laserhall.simprint.pro/axiom/index_postpress.php
 // @grant        none
@@ -1617,15 +1617,19 @@ async function checkOrderSections(orderId, orderNum) {
             document.body.appendChild(iframe);
             const t0 = Date.now();
             let started = false, finished = false;
-            const finish = (doc) => {
+            
+            LOG.debug('FORM', `создан iframe для ${productId}`);
+            
+            const finish = (doc, reason) => {
                 if (finished) return;
                 finished = true;
                 clearInterval(poll);
                 clearTimeout(to);
                 iframe.remove();
+                LOG.debug('FORM', `завершено: ${productId}, причина: ${reason}, мс: ${Date.now() - t0}`);
                 resolve(doc);
             };
-            const to = setTimeout(() => finish(null), timeoutMs);
+            const to = setTimeout(() => finish(null, 'таймаут'), timeoutMs);
             const poll = setInterval(() => {
                 try {
                     const win = iframe.contentWindow;
@@ -1633,16 +1637,19 @@ async function checkOrderSections(orderId, orderNum) {
                     if (!win || !doc || !doc.body) return;
                     if (!started && typeof win.ShowPostpressForm === 'function') {
                         started = true;
-                        try { win.ShowPostpressForm(productId, 'postpress'); } catch (e) {}
+                        LOG.debug('FORM', `вызов ShowPostpressForm для ${productId}`);
+                        try { win.ShowPostpressForm(productId, 'postpress'); } catch (e) { LOG.error('FORM', 'ошибка ShowPostpressForm', e); }
                         return;
                     }
                     if (!started) return;
                     const v1Ready = doc.querySelector('#Postpress .postpressblock') || doc.querySelector('#Postpress .formblock') || doc.querySelector('input.ProductName');
                     const v2Ready = doc.querySelector('h1.name') && (doc.querySelector('article.pfv2-postpress-operation') || doc.querySelector('.pfv2-postpress-operations') || doc.querySelector('.pfv2-order-shell'));
-                    if (v1Ready || v2Ready) { finish(doc); return; }
+                    if (v1Ready || v2Ready) { finish(doc, 'готова (v1 или v2)'); return; }
                     const headerOnly = doc.querySelector('h1.name') || doc.querySelector('input.ProductName');
-                    if (headerOnly && Date.now() - t0 > 6000) { finish(doc); return; }
-                } catch (e) {}
+                    if (headerOnly && Date.now() - t0 > 6000) { finish(doc, 'шапка без операций (6 сек)'); return; }
+                } catch (e) {
+                    LOG.debug('FORM', 'poll ошибка', e);
+                }
             }, 300);
         });
     }
@@ -1722,11 +1729,13 @@ async function checkOrderSections(orderId, orderNum) {
             if (!manager) manager = findLabel(/^менеджер:?$/i);
         }
 
+        LOG.debug('PARSE-CM', `результат для ${doc.location ? doc.location.href : 'iframe'}: клиент="${client}", менеджер="${manager}"`);
         return { client, manager };
     }
 
     async function fetchReadiness(productId, sectorFilter) {
         try {
+            LOG.info('READY', `начало обработки ${productId}`);
             const doc = await loadFormDoc(productId);
             if (!doc) {
                 LOG.warn('READY', 'форма не отрендерилась (таймаут)', productId);
@@ -1952,6 +1961,7 @@ async function checkOrderSections(orderId, orderNum) {
                         const nameIdxRaw = idxBy('назв');
                         const clientIdx = idxBy('клиент', 'заказчик');
                         const managerIdx = idxBy('менеджер');
+                        LOG.debug('IFRAME', `индексы колонок: nameIdx=${nameIdx}, clientIdx=${clientIdx}, managerIdx=${managerIdx}, qtyIdx=${qtyIdx}`);
                         const qtyIdxRaw = idxBy('кол-во', 'кол-во');
                         const nameIdx = nameIdxRaw >= 0 ? nameIdxRaw : 3;
                         const qtyIdx = qtyIdxRaw >= 0 ? qtyIdxRaw : 6;
