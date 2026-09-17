@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Laserhall Axiom
 // @namespace    https://laserhall.simprint.pro/
-// @version      53.1.0
+// @version      53.2.0
 // @description  
 // @match        https://laserhall.simprint.pro/axiom/index_postpress.php
 // @grant        none
@@ -703,13 +703,9 @@
 
             const syncBadge = document.createElement('span');
             syncBadge.className = 'tm-stock-sync-badge';
-            syncBadge.style.cssText = 'font:12px Arial;color:#555;font-weight:400;margin-left:12px;';
-
-            const syncBtn = document.createElement('button');
-            syncBtn.textContent = '⟳';
-            syncBtn.title = 'Синхронизировать сейчас';
-            syncBtn.style.cssText = 'border:1px solid #1565c0;background:#e3f2fd;color:#1565c0;border-radius:4px;padding:2px 8px;cursor:pointer;font:600 14px Arial;';
-            syncBtn.addEventListener('click', () => stockSync('кнопка'));
+            syncBadge.title = 'Статус синхронизации склада (клик — синхронизировать сейчас)';
+            syncBadge.style.cssText = 'font:12px Arial;color:#555;font-weight:400;margin-left:12px;cursor:pointer;';
+            syncBadge.addEventListener('click', () => stockSync('клик по бейджу'));
             
             const closeBtn = document.createElement('button');
             closeBtn.textContent = '✕';
@@ -751,10 +747,8 @@
             hRight.style.cssText = 'display:flex;gap:8px;align-items:center;';
 
             hRight.appendChild(syncBadge);
-            hRight.appendChild(syncBtn);
             hRight.appendChild(saveBtn);
             hRight.appendChild(closeBtn);
-
 
             header.appendChild(title);
             header.appendChild(hRight);
