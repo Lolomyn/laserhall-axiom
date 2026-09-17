@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Laserhall Axiom
 // @namespace    https://laserhall.simprint.pro/
-// @version      53.0.0
+// @version      53.0.1
 // @description  
 // @match        https://laserhall.simprint.pro/axiom/index_postpress.php
 // @grant        none
@@ -1289,7 +1289,7 @@ async function checkOrderSections(orderId, orderNum) {
         }
     }
 
-async function runPrepressScan() {
+    async function runPrepressScan() {
         if (prepressBusy) return;
         prepressBusy = true;
         const tPP = timer('скан препресса');
@@ -2030,7 +2030,7 @@ async function runPrepressScan() {
 
     /* ===== СЧЁТЧИК СДЕЛАННЫХ ЗАКАЗОВ ШФ ЗА ДЕНЬ ===== */
     const STATS_KEY = 'tmShfDoneStats';
-    const todayStr = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
+    // const todayStr = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
 
     function loadStats() {
         try { const raw = localStorage.getItem(STATS_KEY); if (raw) return JSON.parse(raw); } catch (e) {}
@@ -2058,6 +2058,20 @@ function resetStatsIfNewDay() {
             shfStats.counted = [];
             saveStats(shfStats);
         }
+    }
+
+    /* ===== Вспомогательные даты (восстановить, если удалились со старой статистикой) ===== */
+    const todayStr = () => {
+        const d = new Date();
+        return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    };
+
+    function getWeekStart() {
+        const now = new Date();
+        const day = now.getDay();                 // 0 = воскресенье
+        const diff = (day === 0 ? -6 : 1 - day);  // смещение к понедельнику
+        const monday = new Date(now.getFullYear(), now.getMonth(), now.getDate() + diff);
+        return `${monday.getFullYear()}-${String(monday.getMonth() + 1).padStart(2, '0')}-${String(monday.getDate()).padStart(2, '0')}`;
     }
 
     /* ===== СТАТИСТИКА: ОБЩАЯ БД (GitHub) ===== */
