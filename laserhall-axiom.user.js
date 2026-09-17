@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Laserhall Axiom
 // @namespace    https://laserhall.simprint.pro/
-// @version      52.0.0
+// @version      53.0.0
 // @description  
 // @match        https://laserhall.simprint.pro/axiom/index_postpress.php
 // @grant        none
@@ -971,7 +971,8 @@
             footerSave.textContent = '💾 Сохранить отчёт';
             footerSave.title = 'Скачать статистику текущей недели файлом (без сброса)';
             footerSave.addEventListener('click', () => {
-                if (!exportMaterialStatsReport()) alert('Пока нет данных для отчёта');
+                const base = statsShared || loadStatsCache();
+                if (!base || !exportStatsReport(base)) alert('Пока нет данных для отчёта');
             });
 
             footer.appendChild(footerToggle);
@@ -998,9 +999,8 @@
         if (cacheShfLeft) renderShfColumn(unifiedEl.left, SHF_LEFT.title, cacheShfLeft, SHF_LEFT.value);
         if (cacheShfRight) renderShfColumn(unifiedEl.right, SHF_RIGHT.title, cacheShfRight, SHF_RIGHT.value);
 
-        resetStatsIfNewDay();
-        resetMaterialStatsIfNewWeek();
         updateFooter();
+        statsSync('открытие модалки');
 
         if (isCacheFresh()) {
             LOG.info('MODAL', 'кэш свежий, возраст сек:', Math.round((Date.now() - cacheTimestamp) / 1000));
@@ -2060,131 +2060,140 @@ function resetStatsIfNewDay() {
         }
     }
 
-    /* ===== СЧЁТЧИК МАТЕРИАЛОВ И ИЗДЕЛИЙ (НЕДЕЛЬНЫЙ) ===== */
-    const MATERIALS_KEY = 'tmShfMaterialsStats';
+    /* ===== СТАТИСТИКА: ОБЩАЯ БД (GitHub) ===== */
+    const STATS_PATH = 'stats.json';
+    let statsShared = null;          // актуальное общее состояние в памяти
+    let statsSyncTimer = null;
+    let statsBusy = false;
+    let materialStatsBusy = false;
 
-    function getWeekStart() {
-        const now = new Date();
-        const day = now.getDay();              // 0 = воскресенье
-        const diff = (day === 0 ? -6 : 1 - day);
-        const monday = new Date(now.getFullYear(), now.getMonth(), now.getDate() + diff);
-        return `${monday.getFullYear()}-${String(monday.getMonth() + 1).padStart(2, '0')}-${String(monday.getDate()).padStart(2, '0')}`;
+    function statsEmpty(weekStart) {
+        return { weekStart: weekStart, materialsByOrder: {}, productsByOrder: {}, doneByDay: {}, updated: null, pc: null };
     }
 
-    function loadMaterialStats() {
-        try {
-            const raw = localStorage.getItem(MATERIALS_KEY);
-            if (raw) return JSON.parse(raw);
-        } catch (e) {}
-        return { weekStart: getWeekStart(), materials: {}, counted: [], products: {}, countedProducts: [], doneByDay: {} };
+    const loadStatsCache = () => { try { const r = localStorage.getItem('tmStatsCache'); return r ? JSON.parse(r) : null; } catch (e) { return null; } };
+    const saveStatsCache = s => { try { localStorage.setItem('tmStatsCache', JSON.stringify(s)); } catch (e) {} };
+    const statsPendingGet = () => { try { const p = JSON.parse(localStorage.getItem('tmStatsPending') || 'null'); return p || { done: {}, mats: {}, prods: {} }; } catch (e) { return { done: {}, mats: {}, prods: {} }; } };
+    const statsPendingSet = p => { try { localStorage.setItem('tmStatsPending', JSON.stringify(p)); } catch (e) {} };
+    const watchedGet = () => { try { return JSON.parse(localStorage.getItem('tmShfWatched') || '{}'); } catch (e) { return {}; } };
+    const watchedSet = w => { try { localStorage.setItem('tmShfWatched', JSON.stringify(w)); } catch (e) {} };
+
+    function statsDoneIdsAll(base) {
+        const s = new Set();
+        Object.values(base.doneByDay || {}).forEach(d => Object.keys(d.ids || {}).forEach(id => s.add(id)));
+        return s;
     }
-
-    function saveMaterialStats(st) {
-        try { localStorage.setItem(MATERIALS_KEY, JSON.stringify(st)); } catch (e) {}
-    }
-
-    let materialStats = loadMaterialStats();
-
-    function resetMaterialStatsIfNewWeek() {
-        const currentWeek = getWeekStart();
-        if (materialStats.weekStart !== currentWeek) {
-            LOG.info('STATS', 'новая неделя — формирую отчёт', { неделя: materialStats.weekStart });
-            exportMaterialStatsReport();
-            materialStats.weekStart = currentWeek;
-            materialStats.materials = {};
-            materialStats.counted = [];
-            materialStats.products = {};
-            materialStats.countedProducts = [];
-            materialStats.doneByDay = {};
-            saveMaterialStats(materialStats);
-        }
+    
+    function statsTodayCount() {
+        const b = statsShared || loadStatsCache();
+        if (!b) return 0;
+        const d = (b.doneByDay || {})[todayStr()];
+        return d ? Object.keys(d.ids || {}).length : 0;
     }
 
     function updateFooter() {
         if (!unifiedEl || !unifiedEl.footerStats) return;
 
-        const parts = [`Сделанные заказы: <b style="color:#2e7d32;">${shfStats.count}</b>`];
+        const parts = [`Сделанные заказы: <b style="color:#2e7d32;">${statsTodayCount()}</b>`];
 
-        const matEntries = Object.entries(materialStats.materials || {})
-            .filter(([_, count]) => count > 0)
-            .sort((a, b) => b[1] - a[1]);
-
+        const matEntries = Object.entries(statsMaterialsTotals()).filter(([_, c]) => c > 0).sort((a, b) => b[1] - a[1]);
         if (matEntries.length > 0) {
-            parts.push('<b>Материалы:</b> ' + matEntries.map(([name, count]) => `${name}: <b>${count}</b>`).join(' &nbsp;|&nbsp; '));
+            parts.push('<b>Материалы:</b> ' + matEntries.map(([n, c]) => `${n}: <b>${c}</b>`).join(' &nbsp;|&nbsp; '));
         }
-
-        const prodEntries = Object.entries(materialStats.products || {})
-            .filter(([_, count]) => count > 0)
-            .sort((a, b) => b[1] - a[1]);
-
+        const prodEntries = Object.entries(statsProductsTotals()).filter(([_, c]) => c > 0).sort((a, b) => b[1] - a[1]);
         if (prodEntries.length > 0) {
-            parts.push('<b>Изделия:</b> ' + prodEntries.map(([name, count]) => `${name}: <b>${count}</b>`).join(' &nbsp;|&nbsp; '));
+            parts.push('<b>Изделия:</b> ' + prodEntries.map(([n, c]) => `${n}: <b>${c}</b>`).join(' &nbsp;|&nbsp; '));
         }
-
-        if (matEntries.length === 0 && prodEntries.length === 0) {
+        if (!matEntries.length && !prodEntries.length) {
             parts.push('<span style="color:#999;">Материалы и изделия за неделю: пока нет данных</span>');
         }
 
-        unifiedEl.footerStats.innerHTML = parts.join(' &nbsp;&nbsp;&nbsp;&nbsp; <br><br>');
+        unifiedEl.footerStats.innerHTML = parts.join(' &nbsp;&nbsp;•&nbsp;&nbsp; ');
     }
 
     function updateFooterCount() { updateFooter(); }
 
-    let materialStatsBusy = false;
+    function statsMaterialsTotals() {
+        const out = {};
+        const b = statsShared || loadStatsCache();
+        Object.values((b || {}).materialsByOrder || {}).forEach(rec => (rec.mats || []).forEach(m => { out[m] = (out[m] || 0) + 1; }));
+        return out;
+    }
 
-    async function updateMaterialStats() {
-        if (materialStatsBusy) return;
-        materialStatsBusy = true;
+    function statsProductsTotals() {
+        const out = {};
+        const b = statsShared || loadStatsCache();
+        Object.values((b || {}).productsByOrder || {}).forEach(rec => (rec.items || []).forEach(it => { out[it[0]] = (out[it[0]] || 0) + (it[1] || 0); }));
+        return out;
+    }
+
+    function statsScheduleSync() {
+        clearTimeout(statsSyncTimer);
+        statsSyncTimer = setTimeout(() => statsSync('пендинг'), 3000);
+    }
+
+    async function statsSync(reason) {
+        if (!ghToken()) { LOG.warn('SYNC', 'статистика: нет токена'); return; }
         try {
-            resetMaterialStatsIfNewWeek();
+            const remote = await ghRead(STATS_PATH);
+            let base = (remote && remote.data && remote.data.weekStart) ? remote.data : statsEmpty(getWeekStart());
 
-            const seen = new Set();
-            const currentRows = [];
-            [...(cacheShfLeft || []), ...(cacheShfRight || [])].forEach(r => {
-                if (!seen.has(r.productId)) { seen.add(r.productId); currentRows.push(r); }
-            });
+            // новая неделя — отчёт из общих данных и сброс
+            const curWeek = getWeekStart();
+            if (base.weekStart !== curWeek) {
+                LOG.info('STATS', 'новая неделя — формирую отчёт', { неделя: base.weekStart });
+                exportStatsReport(base);
+                base = statsEmpty(curWeek);
+            }
 
-            // --- МАТЕРИАЛЫ (+1 на заказ) ---
-            const countedSet = new Set(materialStats.counted);
-
-            currentRows.forEach(r => {
-                if (r._materials && r._materials.length > 0 && !countedSet.has(r.productId)) {
-                    countedSet.add(r.productId);
-                    materialStats.counted.push(r.productId);
-
-                    const mats = Array.from(new Set(r._materials));
-                    mats.forEach(mat => {
-                        materialStats.materials[mat] = (materialStats.materials[mat] || 0) + 1;
-                        LOG.info('STATS', 'материал +1', { id: r.productId, материал: mat, всего: materialStats.materials[mat] });
-                    });
+            // вливаем локальныеpending-вклады (кто первый записал — того и заказ)
+            const pending = statsPendingGet();
+            let dirty = false;
+            Object.entries(pending.done || {}).forEach(([id, rec]) => {
+                if (!statsDoneIdsAll(base).has(id)) {
+                    base.doneByDay[rec.day] = base.doneByDay[rec.day] || { ids: {} };
+                    base.doneByDay[rec.day].ids[id] = { t: rec.t, pc: rec.pc };
+                    dirty = true;
                 }
             });
-
-            // --- ИЗДЕЛИЯ (+N штук из тиража заказа) ---
-            if (!materialStats.products) materialStats.products = {};
-            if (!materialStats.countedProducts) materialStats.countedProducts = [];
-            const countedProdSet = new Set(materialStats.countedProducts);
-
-            currentRows.forEach(r => {
-                if (r._products && r._products.length > 0 && !countedProdSet.has(r.productId)) {
-                    countedProdSet.add(r.productId);
-                    materialStats.countedProducts.push(r.productId);
-
-                    const add = (r._productQty > 0) ? r._productQty : 1; // тираж заказа; fallback 1
-                    const prods = Array.from(new Set(r._products));
-                    prods.forEach(prod => {
-                        materialStats.products[prod] = (materialStats.products[prod] || 0) + add;
-                        LOG.info('STATS', 'изделие +N', { id: r.productId, изделие: prod, добавлено: add, всего: materialStats.products[prod] });
-                    });
-                }
+            Object.entries(pending.mats || {}).forEach(([id, rec]) => {
+                if (!base.materialsByOrder[id]) { base.materialsByOrder[id] = rec; dirty = true; }
+            });
+            Object.entries(pending.prods || {}).forEach(([id, rec]) => {
+                if (!base.productsByOrder[id]) { base.productsByOrder[id] = rec; dirty = true; }
             });
 
-            saveMaterialStats(materialStats);
+            statsShared = base;
+            saveStatsCache(base);
+
+            if (dirty || !remote) {
+                base.updated = new Date().toISOString();
+                base.pc = pcName();
+                try {
+                    await ghWrite(STATS_PATH, base, remote ? remote.sha : undefined);
+                } catch (we) {
+                    // конфликт sha: перечитали, долили pending, повторили
+                    const remote2 = await ghRead(STATS_PATH);
+                    const b2 = (remote2 && remote2.data && remote2.data.weekStart) ? remote2.data : base;
+                    Object.entries(pending.done || {}).forEach(([id, rec]) => {
+                        if (!statsDoneIdsAll(b2).has(id)) { b2.doneByDay[rec.day] = b2.doneByDay[rec.day] || { ids: {} }; b2.doneByDay[rec.day].ids[id] = { t: rec.t, pc: rec.pc }; }
+                    });
+                    Object.entries(pending.mats || {}).forEach(([id, rec]) => { if (!b2.materialsByOrder[id]) b2.materialsByOrder[id] = rec; });
+                    Object.entries(pending.prods || {}).forEach(([id, rec]) => { if (!b2.productsByOrder[id]) b2.productsByOrder[id] = rec; });
+                    b2.updated = new Date().toISOString(); b2.pc = pcName();
+                    await ghWrite(STATS_PATH, b2, remote2 ? remote2.sha : undefined);
+                    statsShared = b2; saveStatsCache(b2);
+                }
+                statsPendingSet({});
+            } else {
+                statsPendingSet({});   // наши pending уже есть в удалённой базе
+            }
+
             updateFooter();
+            LOG.info('SYNC', 'статистика синхронизирована', { причина: reason, запись: dirty || !remote });
         } catch (e) {
-            LOG.error('STATS', 'ошибка updateMaterialStats', e);
-        } finally {
-            materialStatsBusy = false;
+            LOG.warn('SYNC', 'статистика: сбой синхронизации, работаем локально', e && e.message);
+            if (!statsShared) { statsShared = loadStatsCache(); updateFooter(); }
         }
     }
 
@@ -2196,55 +2205,45 @@ function resetStatsIfNewDay() {
         } catch (e) { return false; }
     }
 
-    let statsBusy = false;
-
+    /* --- сбор вкладов: сделанные заказы --- */
     async function updateDoneStats() {
         if (statsBusy) return;
         statsBusy = true;
         try {
-            resetStatsIfNewDay();
-
-            const seen = new Set();
-            const currentRows = [];
-            [...(cacheShfLeft || []), ...(cacheShfRight || [])].forEach(r => {
-                if (!seen.has(r.productId)) { seen.add(r.productId); currentRows.push(r); }
-            });
-
-            const currentIds = new Set(currentRows.map(r => r.productId));
+            const base = statsShared || loadStatsCache() || statsEmpty(getWeekStart());
+            const known = statsDoneIdsAll(base);
+            const pending = statsPendingGet();
+            const watched = watchedGet();
             const t = todayStr();
 
-            currentRows.forEach(r => { if (shfStats.watched[r.productId] === undefined) shfStats.watched[r.productId] = t; });
+            const seen = new Set(); const currentRows = [];
+            [...(cacheShfLeft || []), ...(cacheShfRight || [])].forEach(r => { if (!seen.has(r.productId)) { seen.add(r.productId); currentRows.push(r); } });
 
-            currentRows.forEach(r => {
-                if (r._isPacked && !shfStats.counted.includes(r.productId)) {
-                    shfStats.counted.push(r.productId);
-                    shfStats.count++;
-                    delete shfStats.watched[r.productId];
-                    LOG.info('STATS', 'сделанный заказ +1', { id: r.productId, всего: shfStats.count });
-                }
-            });
+            currentRows.forEach(r => { watched[r.productId] = watched[r.productId] || t; });
 
-            const missing = Object.keys(shfStats.watched).filter(id => !currentIds.has(id) && !shfStats.counted.includes(id)).slice(0, 30);
+            let added = 0;
+            const addDone = (id) => {
+                if (known.has(id) || pending.done[id]) return;
+                pending.done[id] = { day: t, t: Date.now(), pc: pcName() };
+                added++;
+                LOG.info('STATS', 'сделанный заказ (pending)', { id });
+            };
+
+            currentRows.forEach(r => { if (r._isPacked) addDone(r.productId); });
+
+            const currentIds = new Set(currentRows.map(r => r.productId));
+            const missing = Object.keys(watched).filter(id => !currentIds.has(id) && !known.has(id) && !pending.done[id]).slice(0, 30);
             if (missing.length) {
                 const flags = await parallelLimit(missing, id => fetchPackStatus(id), 5);
-                missing.forEach((id, i) => {
-                    if (flags[i] && !shfStats.counted.includes(id)) {
-                        shfStats.counted.push(id);
-                        shfStats.count++;
-                        delete shfStats.watched[id];
-                        LOG.info('STATS', 'сделанный заказ +1 (проверка упаковки)', { id, всего: shfStats.count });
-                    }
-                });
+                missing.forEach((id, i) => { if (flags[i]) addDone(id); });
             }
 
             const weekAgo = Date.now() - 7 * 86400000;
-            Object.keys(shfStats.watched).forEach(id => {
-                if (new Date(shfStats.watched[id] + 'T00:00:00').getTime() < weekAgo) delete shfStats.watched[id];
-            });
+            Object.keys(watched).forEach(id => { if (new Date(watched[id] + 'T00:00:00').getTime() < weekAgo) delete watched[id]; });
+            watchedSet(watched);
 
-            saveStats(shfStats);
-            updateFooterCount();
-            LOG.debug('STATS', 'состояние дня', { count: shfStats.count, watched: Object.keys(shfStats.watched).length });
+            statsPendingSet(pending);
+            if (added) statsScheduleSync();
         } catch (e) {
             LOG.error('STATS', 'ошибка updateDoneStats', e);
         } finally {
@@ -2252,7 +2251,99 @@ function resetStatsIfNewDay() {
         }
     }
 
+    /* --- сбор вкладов: материалы и изделия --- */
+    async function updateMaterialStats() {
+        if (materialStatsBusy) return;
+        materialStatsBusy = true;
+        try {
+            const base = statsShared || loadStatsCache() || statsEmpty(getWeekStart());
+            const pending = statsPendingGet();
+
+            const seen = new Set(); const currentRows = [];
+            [...(cacheShfLeft || []), ...(cacheShfRight || [])].forEach(r => { if (!seen.has(r.productId)) { seen.add(r.productId); currentRows.push(r); } });
+
+            let added = 0;
+            currentRows.forEach(r => {
+                if (r._materials && r._materials.length && !base.materialsByOrder[r.productId] && !pending.mats[r.productId]) {
+                    pending.mats[r.productId] = { mats: r._materials, t: Date.now(), pc: pcName() };
+                    added++;
+                    LOG.info('STATS', 'материалы (pending)', { id: r.productId, материалы: r._materials });
+                }
+                if (r._products && r._products.length && !base.productsByOrder[r.productId] && !pending.prods[r.productId]) {
+                    const qty = (r._productQty > 0) ? r._productQty : 1;
+                    pending.prods[r.productId] = { items: r._products.map(p => [p, qty]), t: Date.now(), pc: pcName() };
+                    added++;
+                    LOG.info('STATS', 'изделия (pending)', { id: r.productId, изделия: r._products, количество: qty });
+                }
+            });
+
+            statsPendingSet(pending);
+            if (added) statsScheduleSync();
+        } catch (e) {
+            LOG.error('STATS', 'ошибка updateMaterialStats', e);
+        } finally {
+            materialStatsBusy = false;
+        }
+    }
+
+    /* --- отчёт из общей базы --- */
+    function buildStatsReportText(st) {
+        const weekEnd = getWeekEndIso(st.weekStart);
+        const matsTot = {}; Object.values(st.materialsByOrder || {}).forEach(rec => (rec.mats || []).forEach(m => { matsTot[m] = (matsTot[m] || 0) + 1; }));
+        const prodsTot = {}; Object.values(st.productsByOrder || {}).forEach(rec => (rec.items || []).forEach(it => { prodsTot[it[0]] = (prodsTot[it[0]] || 0) + (it[1] || 0); }));
+
+        const lines = [];
+        lines.push('========================================');
+        lines.push('LaserHall — отчёт по участку ШФ');
+        lines.push(`Неделя: ${formatDateRu(st.weekStart)} – ${formatDateRu(weekEnd)}`);
+        lines.push(`Отчёт сформирован: ${new Date().toLocaleString('ru-RU')}`);
+        lines.push('========================================');
+        lines.push('');
+        lines.push('МАТЕРИАЛЫ:');
+        const mats = Object.entries(matsTot).filter(([_, c]) => c > 0).sort((a, b) => b[1] - a[1]);
+        if (mats.length) mats.forEach(([n, c]) => lines.push(`  ${n}: ${c}`));
+        else lines.push('  (нет данных)');
+        lines.push('');
+        lines.push('ИЗДЕЛИЯ:');
+        const prods = Object.entries(prodsTot).filter(([_, c]) => c > 0).sort((a, b) => b[1] - a[1]);
+        if (prods.length) prods.forEach(([n, c]) => lines.push(`  ${n}: ${c}`));
+        else lines.push('  (нет данных)');
+        lines.push('');
+        lines.push('СДЕЛАННЫЕ ЗАКАЗЫ ПО ДНЯМ:');
+        const days = Object.entries(st.doneByDay || {}).sort((a, b) => a[0].localeCompare(b[0]));
+        let total = 0;
+        if (days.length) days.forEach(([d, rec]) => {
+            const ids = Object.keys(rec.ids || {});
+            total += ids.length;
+            lines.push(`  ${formatDateRu(d)} - Сделанные заказы: ${ids.length}${ids.length ? ' (' + ids.join(', ') + ')' : ''}`);
+        });
+        else lines.push('  (нет данных)');
+        lines.push(`  ИТОГО за неделю: ${total}`);
+        lines.push('========================================');
+        return lines.join('\n');
+    }
+
+    function exportStatsReport(st) {
+        const has = Object.keys(st.materialsByOrder || {}).length || Object.keys(st.productsByOrder || {}).length || Object.keys(st.doneByDay || {}).length;
+        if (!has) { LOG.warn('REPORT', 'нет данных для отчёта'); return false; }
+        const filename = `SHF_otchet_${st.weekStart}_${getWeekEndIso(st.weekStart)}.txt`;
+        downloadReport(buildStatsReportText(st), filename);
+        return true;
+    }
+
+    window.tmStats = () => ({ общая: statsShared, pending: statsPendingGet() });
+    window.tmExportLegacy = () => {
+        try {
+            const raw = localStorage.getItem('tmShfMaterialsStats');
+            if (!raw) { alert('Старой локальной статистики нет'); return; }
+            downloadReport(buildReportText(JSON.parse(raw)), `SHF_otchet_legacy_${todayStr()}.txt`);
+        } catch (e) { alert('Ошибка: ' + e.message); }
+    };
+
     /* ===== СТАРТ ===== */
+
+    setTimeout(() => { statsSync('старт'); }, 8000);
+    setInterval(() => { statsSync('поллинг'); }, 90000);
 
     setInterval(() => { if (stockOpen) stockSync('поллинг'); }, 60000);
 
