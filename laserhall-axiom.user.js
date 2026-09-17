@@ -456,7 +456,7 @@
                 { k: 'Чернила УФ LUS 210 Magenta', s: 'Magenta', color: '#e91e63' },
                 { k: 'Чернила УФ LUS 210 Yellow',  s: 'Yellow',  color: '#fdd835' },
                 { k: 'Чернила УФ LUS 210 Black',   s: 'Black',   color: '#212121' },
-                { k: 'Чернила УФ LUS 210 White',   s: 'Wgite',   color: '#ffffff' },
+                { k: 'Чернила УФ LUS 210 White',   s: 'White',   color: '#ffffff' },
                 { k: 'Промывочная жидкость',       s: 'Промывочная жидкость', color: '#90a4ae' },
             ]
         },
