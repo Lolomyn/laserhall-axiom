@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Laserhall Axiom
 // @namespace    https://laserhall.simprint.pro/
-// @version      53.2.0
+// @version      53.4.0
 // @description  
 // @match        https://laserhall.simprint.pro/axiom/index_postpress.php
 // @grant        none
@@ -1662,18 +1662,66 @@ async function checkOrderSections(orderId, orderNum) {
 
     function parseClientManager(doc, isV2) {
         let client = '', manager = '';
-        if (isV2) {
-            doc.querySelectorAll('.axui-form-row').forEach(rowEl => {
+
+        const extractValue = (valueEl) => {
+            if (!valueEl) return '';
+            // приоритет: single-label-text → assistive-text → input value → общий textContent
+            const candidates = [
+                valueEl.querySelector('.multiselect-single-label-text'),
+                valueEl.querySelector('.multiselect-assistive-text'),
+                valueEl.querySelector('input[type="text"]'),
+            ];
+            for (const c of candidates) {
+                const v = (c.value || c.textContent || '').trim();
+                if (v) return v;
+            }
+            return (valueEl.textContent || '').replace(/\s+/g, ' ').trim();
+        };
+
+        const findInRows = (root) => {
+            if (!root) return;
+            root.querySelectorAll('.axui-form-row').forEach(rowEl => {
                 const l = rowEl.querySelector('.axui-form-label');
                 const v = rowEl.querySelector('.axui-form-value');
-                if (!l || !v) return;
+                if (!l) return;
                 const t = (l.textContent || '').trim().toLowerCase();
-                if (/заказчик|клиент/.test(t) && !client) client = (v.textContent || '').trim();
-                if (/менеджер/.test(t) && !manager) manager = (v.textContent || '').trim();
+                if (/^(заказчик|клиент)/i.test(t) && !client) client = extractValue(v);
+                if (/^менеджер/i.test(t) && !manager) manager = extractValue(v);
             });
+        };
+
+        if (isV2) {
+            // ищем строго в основном блоке информации заказа
+            const mainTable = doc.querySelector('.axui-form-table.pfv2-main-info-table') ||
+                              doc.querySelector('.pfv2-main-info-table');
+            findInRows(mainTable);
+            // fallback: если основного блока нет — по всей форме, но только в верхней её части
+            if (!client || !manager) findInRows(doc);
+        } else {
+            // V1: label с двоеточием "Клиент:", "Менеджер:"
+            findInRows(doc);
         }
-        if (!client) client = findLabelValue(doc, /^(клиент|заказчик):?$/i);
-        if (!manager) manager = findLabelValue(doc, /^менеджер:?$/i);
+
+        // финальный fallback по любым текстовым узлам
+        if (!client || !manager) {
+            const findLabel = (re) => {
+                const nodes = doc.querySelectorAll('td, th, div, span, dt, dd');
+                for (const el of nodes) {
+                    if (el.children.length) continue;
+                    const t = (el.textContent || '').trim();
+                    if (!re.test(t)) continue;
+                    let v = '';
+                    if (el.nextElementSibling) v = el.nextElementSibling.textContent.trim();
+                    else if (el.parentElement && el.parentElement.nextElementSibling) v = el.parentElement.nextElementSibling.textContent.trim();
+                    v = v.replace(/\s+/g, ' ').trim();
+                    if (v) return v;
+                }
+                return '';
+            };
+            if (!client) client = findLabel(/^(клиент|заказчик):?$/i);
+            if (!manager) manager = findLabel(/^менеджер:?$/i);
+        }
+
         return { client, manager };
     }
 
@@ -1822,7 +1870,8 @@ async function checkOrderSections(orderId, orderNum) {
             LOG.debug('READY', productId, {
                 версия: isV2 ? 'V2' : 'V1',
                 status, isPacked: st.isPacked, isStopped: st.isStopped, isPostpressReady: st.isPostpressReady,
-                qty: qtyNum, материалов: materials.length, изделий: products.length
+                qty: qtyNum, материалов: materials.length, изделий: products.length,
+                клиент: cm.client || '—', менеджер: cm.manager || '—'
             });
 
             return { text, status, title: orderTitle, tirazh, qty: qtyNum, description, isStopped: st.isStopped, isPacked: st.isPacked, isPostpressReady: st.isPostpressReady, materials, products, client: cm.client, manager: cm.manager };
