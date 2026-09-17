@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Laserhall Axiom
 // @namespace    https://laserhall.simprint.pro/
-// @version      53.5.0
+// @version      53.6.0
 // @description  
 // @match        https://laserhall.simprint.pro/axiom/index_postpress.php
 // @grant        none
@@ -1961,10 +1961,10 @@ async function checkOrderSections(orderId, orderNum) {
                         const nameIdxRaw = idxBy('назв');
                         const clientIdx = idxBy('клиент', 'заказчик');
                         const managerIdx = idxBy('менеджер');
-                        LOG.debug('IFRAME', `индексы колонок: nameIdx=${nameIdx}, clientIdx=${clientIdx}, managerIdx=${managerIdx}, qtyIdx=${qtyIdx}`);
                         const qtyIdxRaw = idxBy('кол-во', 'кол-во');
                         const nameIdx = nameIdxRaw >= 0 ? nameIdxRaw : 3;
                         const qtyIdx = qtyIdxRaw >= 0 ? qtyIdxRaw : 6;
+                        LOG.debug('IFRAME', `индексы колонок: nameIdx=${nameIdx}, clientIdx=${clientIdx}, managerIdx=${managerIdx}, qtyIdx=${qtyIdx}`);
 
                         trs.forEach(tr => {
                             const tds = Array.from(tr.querySelectorAll('td'));
