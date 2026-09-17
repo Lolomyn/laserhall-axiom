@@ -1617,7 +1617,7 @@ async function checkOrderSections(orderId, orderNum) {
             document.body.appendChild(iframe);
             const t0 = Date.now();
             let started = false, finished = false;
-            LOG.debug('FORM', `создан iframe для ${productId}`);
+            LOG.info('FORM', `создан iframe для ${productId}`);
 
             const finish = (doc, reason) => {
                 if (finished) return;
@@ -1625,7 +1625,7 @@ async function checkOrderSections(orderId, orderNum) {
                 clearInterval(poll);
                 clearTimeout(to);
                 iframe.remove();
-                LOG.debug('FORM', `завершено: ${productId}, причина: ${reason}, мс: ${Date.now() - t0}`);
+                LOG.info('FORM', `завершено: ${productId}, причина: ${reason}, мс: ${Date.now() - t0}`);
                 resolve(doc);
             };
             const to = setTimeout(() => finish(null, 'таймаут'), timeoutMs);
@@ -1636,7 +1636,7 @@ async function checkOrderSections(orderId, orderNum) {
                     if (!win || !doc || !doc.body) return;
                     if (!started && typeof win.ShowPostpressForm === 'function') {
                         started = true;
-                        LOG.debug('FORM', `вызов ShowPostpressForm для ${productId}`);
+                        LOG.info('FORM', `вызов ShowPostpressForm для ${productId}`);
                         try { win.ShowPostpressForm(productId, 'postpress'); } catch (e) {}
                         return;
                     }
@@ -1647,7 +1647,7 @@ async function checkOrderSections(orderId, orderNum) {
                     const headerOnly = doc.querySelector('h1.name') || doc.querySelector('input.ProductName');
                     if (headerOnly && Date.now() - t0 > 6000) { finish(doc, 'шапка без операций (6 сек)'); return; }
                 } catch (e) {
-                    LOG.debug('FORM', 'poll ошибка', e);
+                    LOG.info('FORM', 'poll ошибка', e);
                 }
             }, 300);
         });
@@ -1727,7 +1727,7 @@ async function checkOrderSections(orderId, orderNum) {
             if (!client) client = findLabel(/^(клиент|заказчик):?$/i);
             if (!manager) manager = findLabel(/^менеджер:?$/i);
         }
-        LOG.debug('PARSE-CM', `результат для ${doc.location ? doc.location.href : 'iframe'}: клиент="${client}", менеджер="${manager}"`);
+        LOG.info('PARSE-CM', `результат для ${doc.location ? doc.location.href : 'iframe'}: клиент="${client}", менеджер="${manager}"`);
         return { client, manager };
     }
 
@@ -1933,7 +1933,7 @@ async function checkOrderSections(orderId, orderNum) {
             iframe.src = SHF_PAGE_URL;
             document.body.appendChild(iframe);
             let attempts = 0;
-            LOG.debug('IFRAME', 'SHF загрузка, сектор', sectorValue);
+            LOG.info('IFRAME', 'SHF загрузка, сектор', sectorValue);
             const checkInterval = setInterval(() => {
                 attempts++;
                 try {
