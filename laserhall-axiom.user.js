@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Laserhall Axiom
 // @namespace    https://laserhall.simprint.pro/
-// @version      53.0.1
+// @version      53.0.2
 // @description  
 // @match        https://laserhall.simprint.pro/axiom/index_postpress.php
 // @grant        none
@@ -2087,8 +2087,25 @@ function resetStatsIfNewDay() {
 
     const loadStatsCache = () => { try { const r = localStorage.getItem('tmStatsCache'); return r ? JSON.parse(r) : null; } catch (e) { return null; } };
     const saveStatsCache = s => { try { localStorage.setItem('tmStatsCache', JSON.stringify(s)); } catch (e) {} };
-    const statsPendingGet = () => { try { const p = JSON.parse(localStorage.getItem('tmStatsPending') || 'null'); return p || { done: {}, mats: {}, prods: {} }; } catch (e) { return { done: {}, mats: {}, prods: {} }; } };
-    const statsPendingSet = p => { try { localStorage.setItem('tmStatsPending', JSON.stringify(p)); } catch (e) {} };
+
+    const statsPendingGet = () => {
+        let p = null;
+        try { p = JSON.parse(localStorage.getItem('tmStatsPending') || 'null'); } catch (e) {}
+        p = (p && typeof p === 'object') ? p : {};
+        return { done: p.done || {}, mats: p.mats || {}, prods: p.prods || {} };
+    };
+
+    const statsPendingSet = p => {
+        const q = (p && typeof p === 'object') ? p : {};
+        try {
+            localStorage.setItem('tmStatsPending', JSON.stringify({
+                done:  q.done  || {},
+                mats:  q.mats  || {},
+                prods: q.prods || {}
+            }));
+        } catch (e) {}
+    };
+
     const watchedGet = () => { try { return JSON.parse(localStorage.getItem('tmShfWatched') || '{}'); } catch (e) { return {}; } };
     const watchedSet = w => { try { localStorage.setItem('tmShfWatched', JSON.stringify(w)); } catch (e) {} };
 
