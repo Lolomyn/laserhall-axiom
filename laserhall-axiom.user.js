@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Laserhall Axiom
 // @namespace    https://laserhall.simprint.pro/
-// @version      53.0.2
+// @version      53.1.0
 // @description  
 // @match        https://laserhall.simprint.pro/axiom/index_postpress.php
 // @grant        none
@@ -960,6 +960,22 @@
             const footerStats = document.createElement('div');
             footerStats.style.cssText = 'display:none;margin-top:6px;padding-top:6px;border-top:1px dashed #ccc;line-height:1.7;';
 
+            const statsRow = document.createElement('div');
+            statsRow.style.cssText = 'display:flex;align-items:flex-start;justify-content:space-between;gap:12px;';
+
+            const statsContent = document.createElement('div');
+            statsContent.style.cssText = 'flex:1 1 auto;';
+
+            const statsBadge = document.createElement('span');
+            statsBadge.className = 'tm-stats-sync-badge';
+            statsBadge.title = 'Статус синхронизации общей статистики (клик — синхронизировать сейчас)';
+            statsBadge.style.cssText = 'font:12px Arial;color:#555;white-space:nowrap;flex:0 0 auto;cursor:pointer;padding-top:3px;';
+            statsBadge.addEventListener('click', () => statsSync('кнопка в футере'));
+
+            statsRow.appendChild(statsContent);
+            statsRow.appendChild(statsBadge);
+            footerStats.appendChild(statsRow);
+
             footerToggle.addEventListener('click', () => {
                 const isOpen = footerStats.style.display !== 'none';
                 footerStats.style.display = isOpen ? 'none' : 'block';
@@ -987,7 +1003,7 @@
             o.addEventListener('click', e => { if (e.target === o) closeUnifiedModal(); });
             document.body.appendChild(o);
 
-            unifiedEl = { overlay: o, mainBox: b, left: leftCol, right: rightCol, footer: footer, footerStats: footerStats };
+            unifiedEl = { overlay: o, mainBox: b, left: leftCol, right: rightCol, footer: footer, footerStats: footerStats, footerStatsContent: statsContent };
         } else {
             unifiedEl.overlay.style.display = 'flex';
         }
@@ -999,6 +1015,7 @@
         if (cacheShfLeft) renderShfColumn(unifiedEl.left, SHF_LEFT.title, cacheShfLeft, SHF_LEFT.value);
         if (cacheShfRight) renderShfColumn(unifiedEl.right, SHF_RIGHT.title, cacheShfRight, SHF_RIGHT.value);
 
+        updateStatsSyncBadge();
         updateFooter();
         statsSync('открытие модалки');
 
@@ -2123,7 +2140,7 @@ function resetStatsIfNewDay() {
     }
 
     function updateFooter() {
-        if (!unifiedEl || !unifiedEl.footerStats) return;
+        if (!unifiedEl || !unifiedEl.footerStatsContent) return;
 
         const parts = [`Сделанные заказы: <b style="color:#2e7d32;">${statsTodayCount()}</b>`];
 
@@ -2139,7 +2156,7 @@ function resetStatsIfNewDay() {
             parts.push('<span style="color:#999;">Материалы и изделия за неделю: пока нет данных</span>');
         }
 
-        unifiedEl.footerStats.innerHTML = parts.join(' &nbsp;&nbsp;•&nbsp;&nbsp; ');
+        unifiedEl.footerStatsContent.innerHTML = parts.join(' &nbsp;&nbsp;•&nbsp;&nbsp; ');
     }
 
     function updateFooterCount() { updateFooter(); }
@@ -2163,9 +2180,27 @@ function resetStatsIfNewDay() {
         statsSyncTimer = setTimeout(() => statsSync('пендинг'), 3000);
     }
 
+    let statsSyncState = { ok: null, time: 0, msg: '' };
+
+    function updateStatsSyncBadge() {
+        const badge = document.querySelector('.tm-stats-sync-badge');
+        if (!badge) return;
+        const t = statsSyncState.time ? new Date(statsSyncState.time).toTimeString().slice(0, 5) : '';
+        if (statsSyncState.ok === true)       badge.textContent = `🟢 синхр. ${t} · ${pcName()}`;
+        else if (statsSyncState.ok === false) badge.textContent = `🔴 локально (${statsSyncState.msg})`;
+        else                                  badge.textContent = `⏳ синхронизация… · ${pcName()}`;
+    }
+
     async function statsSync(reason) {
-        if (!ghToken()) { LOG.warn('SYNC', 'статистика: нет токена'); return; }
+        if (!ghToken()) { 
+            LOG.warn('SYNC', 'статистика: нет токена'); 
+            statsSyncState = { ok: false, time: Date.now(), msg: 'нет токена' };
+            updateStatsSyncBadge();
+            return;
+        }
         try {
+            statsSyncState = { ok: null, time: statsSyncState.time, msg: '' };
+            updateStatsSyncBadge();
             const remote = await ghRead(STATS_PATH);
             let base = (remote && remote.data && remote.data.weekStart) ? remote.data : statsEmpty(getWeekStart());
 
@@ -2220,9 +2255,14 @@ function resetStatsIfNewDay() {
                 statsPendingSet({});   // наши pending уже есть в удалённой базе
             }
 
+            statsSyncState = { ok: true, time: Date.now(), msg: '' };
+            updateStatsSyncBadge();
+
             updateFooter();
             LOG.info('SYNC', 'статистика синхронизирована', { причина: reason, запись: dirty || !remote });
         } catch (e) {
+            statsSyncState = { ok: false, time: Date.now(), msg: (e && e.message) || 'ошибка' };
+            updateStatsSyncBadge();
             LOG.warn('SYNC', 'статистика: сбой синхронизации, работаем локально', e && e.message);
             if (!statsShared) { statsShared = loadStatsCache(); updateFooter(); }
         }
