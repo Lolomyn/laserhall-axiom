@@ -526,7 +526,7 @@
             const h = document.createElement('div');
             h.style.cssText = 'padding:10px 14px;background:#f5f5f5;border-bottom:1px solid #ddd;display:flex;align-items:center;justify-content:space-between;font:600 15px Arial;flex-shrink:0;';
             const ti = document.createElement('span');
-            ti.textContent = 'Работа участка ШФ';
+            ti.textContent = 'Работа участка ШФ [NEW TEST]';
 
             const r = document.createElement('div');
             r.style.cssText = 'display:flex;gap:8px;align-items:center;';
