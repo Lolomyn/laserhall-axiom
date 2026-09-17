@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Laserhall Axiom
 // @namespace    https://laserhall.simprint.pro/
-// @version      51.0.1
+// @version      52.0.0
 // @description  
 // @match        https://laserhall.simprint.pro/axiom/index_postpress.php
 // @grant        none
@@ -491,42 +491,49 @@
             const remote = await ghRead(STOCK_PATH);
             const local = loadStock();
             const journal = stockJournalGet();
-            const cells = (remote && remote.data && remote.data.cells) ? remote.data.cells : {};
+            const remoteCells = (remote && remote.data && remote.data.cells) ? remote.data.cells : {};
 
-            // наши локальные правки поверх удалённых (по метке времени)
+            const cells = {};
+            // 1) база — значения с GitHub
+            Object.entries(remoteCells).forEach(([k, rec]) => { cells[k] = rec; });
+            // 2) локальные значения, которых нет на GitHub — НЕ теряем, дописываем
+            Object.entries(local).forEach(([k, v]) => {
+                if (!cells[k] && v) cells[k] = { v: v, t: Date.now(), pc: pcName() };
+            });
+            // 3) наши свежие правки из журнала — поверх по метке времени
             Object.entries(journal).forEach(([k, rec]) => {
                 if (!cells[k] || rec.t > cells[k].t) cells[k] = { v: rec.v, t: rec.t, pc: pcName() };
             });
 
-            // принимаем чужие значения локально
+            // 4) пишем, если файла нет или объединённое состояние отличается от удалённого
+            const needWrite = !remote || (JSON.stringify(cells) !== JSON.stringify(remoteCells));
+
+            if (needWrite) {
+                const payload = { cells: cells, updated: new Date().toISOString(), pc: pcName() };
+                try {
+                    await ghWrite(STOCK_PATH, payload, remote ? remote.sha : undefined);
+                } catch (we) {
+                    // конфликт sha: перечитали, объединили, повторили один раз
+                    const remote2 = await ghRead(STOCK_PATH);
+                    const rc2 = (remote2 && remote2.data && remote2.data.cells) ? remote2.data.cells : {};
+                    Object.entries(cells).forEach(([k, rec]) => {
+                        if (!rc2[k] || rec.t > rc2[k].t) rc2[k] = rec;
+                    });
+                    await ghWrite(STOCK_PATH, { cells: rc2, updated: new Date().toISOString(), pc: pcName() }, remote2 ? remote2.sha : undefined);
+                }
+            }
+
+            // 5) запись успешна (или не требовалась) — принимаем общее состояние локально
             const newLocal = {};
             Object.entries(cells).forEach(([k, rec]) => { newLocal[k] = rec.v; });
             const changed = JSON.stringify(newLocal) !== JSON.stringify(local);
             saveStock(newLocal);
-
-            // отправляем, если файла нет или у нас есть свежие правки
-            const journalFresh = Object.keys(journal).some(k =>
-                !remote || !remote.data.cells || !remote.data.cells[k] || journal[k].t > remote.data.cells[k].t);
-
-            if (!remote || journalFresh) {
-                try {
-                    await ghWrite(STOCK_PATH, { cells, updated: new Date().toISOString(), pc: pcName() }, remote ? remote.sha : undefined);
-                } catch (we) {
-                    // конфликт sha: перечитали и повторили один раз
-                    const remote2 = await ghRead(STOCK_PATH);
-                    const cells2 = (remote2 && remote2.data && remote2.cells) ? remote2.data.cells : (remote2 ? remote2.data.cells : cells);
-                    Object.entries(journal).forEach(([k, rec]) => {
-                        if (!cells2[k] || rec.t > cells2[k].t) cells2[k] = { v: rec.v, t: rec.t, pc: pcName() };
-                    });
-                    await ghWrite(STOCK_PATH, { cells: cells2, updated: new Date().toISOString(), pc: pcName() }, remote2 ? remote2.sha : undefined);
-                }
-            }
-
-            stockJournalSet({});   // всё отправлено/перебито более свежим
+            stockJournalSet({});
             stockSyncState = { ok: true, time: Date.now(), msg: '' };
             if (changed && stockOpen) refreshStockInputs();
-            LOG.info('SYNC', 'склад синхронизирован', { причина: reason, изменений: changed });
+            LOG.info('SYNC', 'склад синхронизирован', { причина: reason, запись: needWrite, изменений: changed });
         } catch (e) {
+            // любая ошибка сети/токена: локальные данные НЕ трогаем, журнал сохраняем для доотправки
             stockSyncState = { ok: false, time: Date.now(), msg: (e && e.message) || 'ошибка' };
             LOG.warn('SYNC', 'склад: синхронизация не удалась, работаем локально', e && e.message);
         }
