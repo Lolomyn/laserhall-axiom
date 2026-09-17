@@ -12,7 +12,7 @@
 (function () {
     'use strict';
 
-    const SRC = 'https://raw.githubusercontent.com/ВАШ_ЛОГИН/laserhall-axiom/main/laserhall-axiom.user.js';
+    const SRC = 'https://raw.githubusercontent.com/lolomyn/laserhall-axiom/main/laserhall-axiom.user.js';
     const CACHE_KEY = 'tmLoaderCache';
 
     function run(code) {
