@@ -32,7 +32,7 @@
     const SHF_LEFT = { label: '1 / ШФ', title: '1 / ШФ', value: '5' };
     const SHF_RIGHT = { label: '14 / ШФ постпечать', title: '14 / ШФ постпечать', value: '86' };
 
-    const COL_HEADERS_SHF = ['№', 'Название', 'Описание', 'Кол-во', 'Готовность'];
+    const COL_HEADERS_SHF = ['№', 'Название', 'Клиент', 'Менеджер', 'Описание', 'Кол-во', 'Готовность'];
     const PREPRESS_COL_HEADERS = ['№', 'Клиент', 'Название', 'Менеджер'];
 
     const AUTO_REFRESH_INTERVAL = 60000;
@@ -1360,7 +1360,7 @@ async function checkOrderSections(orderId, orderNum) {
                 const right = c.alignRight ? 'text-align:right;' : '';
                 const bold = /bold/.test(c.cls) ? 'font-weight:700;' : '';
                 const content = c.html || escapeHtml(c.text);
-                const fontSize = idx === 2 ? 'font-size:13px;line-height:1.4;' : '';
+                const fontSize = idx === 4 ? 'font-size:13px;line-height:1.4;' : '';
 
                 let cellContent = content;
                 if (idx === 0) {
@@ -1647,6 +1647,36 @@ async function checkOrderSections(orderId, orderNum) {
         });
     }
 
+    function findLabelValue(doc, re) {
+        const nodes = doc.querySelectorAll('td, th, div, span, dt, dd');
+        for (const el of nodes) {
+            if (el.children.length) continue;
+            const t = (el.textContent || '').trim();
+            if (!re.test(t)) continue;
+            let v = el.nextElementSibling ? el.nextElementSibling.textContent.trim() : '';
+            if (!v && el.parentElement && el.parentElement.nextElementSibling) v = el.parentElement.nextElementSibling.textContent.trim();
+            if (v) return v.replace(/\s+/g, ' ');
+        }
+        return '';
+    }
+
+    function parseClientManager(doc, isV2) {
+        let client = '', manager = '';
+        if (isV2) {
+            doc.querySelectorAll('.axui-form-row').forEach(rowEl => {
+                const l = rowEl.querySelector('.axui-form-label');
+                const v = rowEl.querySelector('.axui-form-value');
+                if (!l || !v) return;
+                const t = (l.textContent || '').trim().toLowerCase();
+                if (/заказчик|клиент/.test(t) && !client) client = (v.textContent || '').trim();
+                if (/менеджер/.test(t) && !manager) manager = (v.textContent || '').trim();
+            });
+        }
+        if (!client) client = findLabelValue(doc, /^(клиент|заказчик):?$/i);
+        if (!manager) manager = findLabelValue(doc, /^менеджер:?$/i);
+        return { client, manager };
+    }
+
     async function fetchReadiness(productId, sectorFilter) {
         try {
             const doc = await loadFormDoc(productId);
@@ -1741,6 +1771,9 @@ async function checkOrderSections(orderId, orderNum) {
                 }
             }
 
+            // КЛИЕНТ / МЕНЕДЖЕР
+            const cm = parseClientManager(doc, isV2);
+
             // МАТЕРИАЛЫ
             const materials = [];
             if (isV2) {
@@ -1792,8 +1825,7 @@ async function checkOrderSections(orderId, orderNum) {
                 qty: qtyNum, материалов: materials.length, изделий: products.length
             });
 
-            return { text, status, title: orderTitle, tirazh, qty: qtyNum, description, isStopped: st.isStopped, isPacked: st.isPacked, isPostpressReady: st.isPostpressReady, materials, products };
-
+            return { text, status, title: orderTitle, tirazh, qty: qtyNum, description, isStopped: st.isStopped, isPacked: st.isPacked, isPostpressReady: st.isPostpressReady, materials, products, client: cm.client, manager: cm.manager };
         } catch (e) {
             LOG.error('READY', 'ошибка', productId, e);
             return { text: '—', status: 'unknown', title: '', tirazh: '', qty: 0, description: '', isStopped: false, isPacked: false, isPostpressReady: false, materials: [], products: [] };
@@ -1823,10 +1855,12 @@ async function checkOrderSections(orderId, orderNum) {
                         matchTr.children[0].innerHTML = numHtml + stopHtml;
                     }
                     if (matchTr.children[1] && row.cells[1]) matchTr.children[1].textContent = row.cells[1].text;
-                    if (matchTr.children[2] && row.cells[2]) matchTr.children[2].innerHTML = row.cells[2].html || row.cells[2].text;
+                    if (matchTr.children[2] && row.cells[2]) matchTr.children[2].textContent = row.cells[2].text;
                     if (matchTr.children[3] && row.cells[3]) matchTr.children[3].textContent = row.cells[3].text;
+                    if (matchTr.children[4] && row.cells[4]) matchTr.children[4].innerHTML = row.cells[4].html || row.cells[4].text;
+                    if (matchTr.children[5] && row.cells[5]) matchTr.children[5].textContent = row.cells[5].text;
                     const lastTd = matchTr.lastElementChild;
-                    if (lastTd && row.cells[4]) lastTd.textContent = row.cells[4].text;
+                    if (lastTd && row.cells[6]) lastTd.textContent = row.cells[6].text;
                     if (rowBg) matchTr.style.background = rowBg;
                     else matchTr.style.background = '';
                 } else {
@@ -1862,6 +1896,17 @@ async function checkOrderSections(orderId, orderNum) {
                         const trs = Array.from(table.querySelectorAll('tbody tr'));
                         const rows = [];
                         const seenOrders = new Set();
+
+                        // карта колонок по шапке таблицы списка участка
+                        const ths = Array.from(table.querySelectorAll('thead th')).map(th => (th.textContent || '').trim().toLowerCase());
+                        const idxBy = (...subs) => ths.findIndex(t => subs.some(s => t.includes(s)));
+                        const nameIdxRaw = idxBy('назв');
+                        const clientIdx = idxBy('клиент', 'заказчик');
+                        const managerIdx = idxBy('менеджер');
+                        const qtyIdxRaw = idxBy('кол-во', 'кол-во');
+                        const nameIdx = nameIdxRaw >= 0 ? nameIdxRaw : 3;
+                        const qtyIdx = qtyIdxRaw >= 0 ? qtyIdxRaw : 6;
+
                         trs.forEach(tr => {
                             const tds = Array.from(tr.querySelectorAll('td'));
                             if (tds.length < 3) return;
@@ -1873,16 +1918,24 @@ async function checkOrderSections(orderId, orderNum) {
                             const productId = m ? m[1] : numText.replace(/\D/g, '');
                             if (seenOrders.has(productId)) return;
                             seenOrders.add(productId);
-                            const qtyText = cells[6] ? cells[6].text : '';
+                            const qtyText = cells[qtyIdx] ? cells[qtyIdx].text : '';
                             const qtyMatch = qtyText.match(/(\d+)/);
                             const qtyClean = qtyMatch ? qtyMatch[1] : qtyText;
-                            rows.push({ displayNum, productId, cells: [
-                                cells[0],
-                                cells[3] || { text: '', html: '', cls: '', alignRight: false },
-                                { text: '⏳', html: '', cls: '', alignRight: false },
-                                { text: qtyClean, html: '', cls: cells[6] ? cells[6].cls : '', alignRight: true },
-                                { text: '⏳', html: '', cls: '', alignRight: false }
-                            ], _status: 'unknown' });
+                            const client = (clientIdx >= 0 && cells[clientIdx]) ? cells[clientIdx].text : '';
+                            const manager = (managerIdx >= 0 && cells[managerIdx]) ? cells[managerIdx].text : '';
+                            rows.push({
+                                displayNum, productId, client, manager,
+                                cells: [
+                                    cells[0],
+                                    cells[nameIdx] || { text: '', html: '', cls: '', alignRight: false },
+                                    { text: client || '—', html: '', cls: '', alignRight: false },
+                                    { text: manager || '—', html: '', cls: '', alignRight: false },
+                                    { text: '⏳', html: '', cls: '', alignRight: false },
+                                    { text: qtyClean, html: '', cls: cells[qtyIdx] ? cells[qtyIdx].cls : '', alignRight: true },
+                                    { text: '⏳', html: '', cls: '', alignRight: false }
+                                ],
+                                _status: 'unknown'
+                            });
                         });
                         if (rows.length > 0) {
                             clearInterval(checkInterval);
@@ -1926,13 +1979,17 @@ async function checkOrderSections(orderId, orderNum) {
             row._materials = result.materials;
             row._products = result.products;
             row._productQty = result.qty || 0;
-            row.cells[4] = { text: result.text, html: '', cls: '', alignRight: false };
+            row.cells[6] = { text: result.text, html: '', cls: '', alignRight: false };
             row._status = result.status;
             row._isStopped = result.isStopped;
 
             if (result.title) row.cells[1] = { text: result.title, html: '', cls: '', alignRight: false };
-            if (result.tirazh) row.cells[3] = { text: result.tirazh, html: '', cls: row.cells[3] ? row.cells[3].cls : '', alignRight: true };
-            row.cells[2] = { text: '', html: result.description || '—', cls: '', alignRight: false };
+            if (result.client) row.client = result.client;
+            if (result.manager) row.manager = result.manager;
+            row.cells[2] = { text: row.client || '—', html: '', cls: '', alignRight: false };
+            row.cells[3] = { text: row.manager || '—', html: '', cls: '', alignRight: false };
+            if (result.tirazh) row.cells[5] = { text: result.tirazh, html: '', cls: row.cells[5] ? row.cells[5].cls : '', alignRight: true };
+            row.cells[4] = { text: '', html: result.description || '—', cls: '', alignRight: false };
 
             updateShfRowDom(row);
         }, 3);
