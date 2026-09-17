@@ -12,7 +12,7 @@
 (function () {
     'use strict';
 
-    const OWNER  = 'lolomyn';
+    const OWNER  = 'Lolomyn';
     const REPO   = 'laserhall-axiom';
     const FILE   = 'laserhall-axiom.user.js';
     const BRANCH = 'main';
