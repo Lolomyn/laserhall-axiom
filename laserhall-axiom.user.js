@@ -408,6 +408,136 @@
 
     function setStatus(el, m) { if (el) el.innerHTML = `<div style="padding:24px;font:14px Arial;color:#555;">${m}</div>`; }
 
+    /* ===== ОБЩАЯ БД (GitHub как хранилище) ===== */
+    const GH_OWNER = 'Lolomyn';
+    const GH_DATA_REPO = 'laserhall-data';   // приватный репозиторий данных
+    const STOCK_PATH = 'stock.json';
+    const SYNC_DEBOUNCE = 3000;              // пауза после последнего изменения перед отправкой
+
+    const pcName = () => {
+        let n = '';
+        try { n = localStorage.getItem('tmPcName') || ''; } catch (e) {}
+        if (!n) {
+            n = 'PC-' + Math.random().toString(36).slice(2, 6).toUpperCase();
+            try { localStorage.setItem('tmPcName', n); } catch (e) {}
+        }
+        return n;
+    };
+
+    const ghToken = () => window.tmGithubToken || null;
+    const b64e = s => btoa(unescape(encodeURIComponent(s)));
+    const b64d = s => decodeURIComponent(escape(atob(s)));
+
+    async function ghRead(path) {
+        if (!ghToken()) throw new Error('нет токена');
+        const r = await fetch(`https://api.github.com/repos/${GH_OWNER}/${GH_DATA_REPO}/contents/${path}`, {
+            headers: { 'Authorization': `Bearer ${ghToken()}` }
+        });
+        if (r.status === 404) return null;
+        if (!r.ok) throw new Error('HTTP ' + r.status);
+        const j = await r.json();
+        return { data: JSON.parse(b64d(j.content)), sha: j.sha };
+    }
+
+    async function ghWrite(path, obj, sha) {
+        if (!ghToken()) throw new Error('нет токена');
+        const body = { message: `tm sync ${path} @ ${pcName()}`, content: b64e(JSON.stringify(obj, null, 2)) };
+        if (sha) body.sha = sha;
+        const r = await fetch(`https://api.github.com/repos/${GH_OWNER}/${GH_DATA_REPO}/contents/${path}`, {
+            method: 'PUT',
+            headers: { 'Authorization': `Bearer ${ghToken()}`, 'Content-Type': 'application/json' },
+            body: JSON.stringify(body)
+        });
+        if (!r.ok) throw new Error('HTTP ' + r.status);
+        const j = await r.json();
+        return j.content && j.content.sha;
+    }
+
+    /* --- синхронизация склада --- */
+    const stockInputs = {};                       // key → input (для живого обновления UI)
+    let stockSyncTimer = null;
+    let stockSyncState = { ok: null, time: 0, msg: '' };
+
+    const stockJournalGet = () => { try { return JSON.parse(localStorage.getItem('tmStockJournal') || '{}'); } catch (e) { return {}; } };
+    const stockJournalSet = j => { try { localStorage.setItem('tmStockJournal', JSON.stringify(j)); } catch (e) {} };
+
+    function updateStockSyncBadge() {
+        const badge = document.querySelector('.tm-stock-sync-badge');
+        if (!badge) return;
+        const t = stockSyncState.time ? new Date(stockSyncState.time).toTimeString().slice(0, 5) : '';
+        if (stockSyncState.ok === true)  badge.textContent = `🟢 синхр. ${t} · ${pcName()}`;
+        if (stockSyncState.ok === false) badge.textContent = `🔴 локально (${stockSyncState.msg})`;
+        if (stockSyncState.ok === null)  badge.textContent = `⏳ синхронизация… · ${pcName()}`;
+    }
+
+    function refreshStockInputs() {
+        const data = loadStock();
+        Object.entries(stockInputs).forEach(([k, inp]) => {
+            if (document.activeElement === inp) return;   // не мешаем тому, кто печатает
+            inp.value = (data[k] === undefined ? 0 : data[k]);
+            paintStockInput(inp, parseFloat(inp.dataset.min) || STOCK_DEFAULT_MIN);
+        });
+    }
+
+    async function stockSync(reason) {
+        if (!ghToken()) {
+            stockSyncState = { ok: false, time: Date.now(), msg: 'нет токена' };
+            updateStockSyncBadge();
+            return;
+        }
+        stockSyncState = { ok: null, time: stockSyncState.time, msg: '' };
+        updateStockSyncBadge();
+        try {
+            const remote = await ghRead(STOCK_PATH);
+            const local = loadStock();
+            const journal = stockJournalGet();
+            const cells = (remote && remote.data && remote.data.cells) ? remote.data.cells : {};
+
+            // наши локальные правки поверх удалённых (по метке времени)
+            Object.entries(journal).forEach(([k, rec]) => {
+                if (!cells[k] || rec.t > cells[k].t) cells[k] = { v: rec.v, t: rec.t, pc: pcName() };
+            });
+
+            // принимаем чужие значения локально
+            const newLocal = {};
+            Object.entries(cells).forEach(([k, rec]) => { newLocal[k] = rec.v; });
+            const changed = JSON.stringify(newLocal) !== JSON.stringify(local);
+            saveStock(newLocal);
+
+            // отправляем, если файла нет или у нас есть свежие правки
+            const journalFresh = Object.keys(journal).some(k =>
+                !remote || !remote.data.cells || !remote.data.cells[k] || journal[k].t > remote.data.cells[k].t);
+
+            if (!remote || journalFresh) {
+                try {
+                    await ghWrite(STOCK_PATH, { cells, updated: new Date().toISOString(), pc: pcName() }, remote ? remote.sha : undefined);
+                } catch (we) {
+                    // конфликт sha: перечитали и повторили один раз
+                    const remote2 = await ghRead(STOCK_PATH);
+                    const cells2 = (remote2 && remote2.data && remote2.cells) ? remote2.data.cells : (remote2 ? remote2.data.cells : cells);
+                    Object.entries(journal).forEach(([k, rec]) => {
+                        if (!cells2[k] || rec.t > cells2[k].t) cells2[k] = { v: rec.v, t: rec.t, pc: pcName() };
+                    });
+                    await ghWrite(STOCK_PATH, { cells: cells2, updated: new Date().toISOString(), pc: pcName() }, remote2 ? remote2.sha : undefined);
+                }
+            }
+
+            stockJournalSet({});   // всё отправлено/перебито более свежим
+            stockSyncState = { ok: true, time: Date.now(), msg: '' };
+            if (changed && stockOpen) refreshStockInputs();
+            LOG.info('SYNC', 'склад синхронизирован', { причина: reason, изменений: changed });
+        } catch (e) {
+            stockSyncState = { ok: false, time: Date.now(), msg: (e && e.message) || 'ошибка' };
+            LOG.warn('SYNC', 'склад: синхронизация не удалась, работаем локально', e && e.message);
+        }
+        updateStockSyncBadge();
+    }
+
+    function stockScheduleSync() {
+        clearTimeout(stockSyncTimer);
+        stockSyncTimer = setTimeout(() => stockSync('ввод'), SYNC_DEBOUNCE);
+    }
+
     /* ===== СКЛАД ===== */
     const STOCK_KEY = 'tmStockData';
     const STOCK_DEFAULT_MIN = 2;   // граница по умолчанию: значение < 2 → красный
@@ -564,6 +694,16 @@
             const title = document.createElement('span');
             title.innerHTML = 'Склад материалов &nbsp;<span style="font:12px Arial;color:#c62828;font-weight:400;">🔴 — ниже минимума, пора заказать</span>';
 
+            const syncBadge = document.createElement('span');
+            syncBadge.className = 'tm-stock-sync-badge';
+            syncBadge.style.cssText = 'font:12px Arial;color:#555;font-weight:400;margin-left:12px;';
+
+            const syncBtn = document.createElement('button');
+            syncBtn.textContent = '⟳';
+            syncBtn.title = 'Синхронизировать сейчас';
+            syncBtn.style.cssText = 'border:1px solid #1565c0;background:#e3f2fd;color:#1565c0;border-radius:4px;padding:2px 8px;cursor:pointer;font:600 14px Arial;';
+            syncBtn.addEventListener('click', () => stockSync('кнопка'));
+            
             const closeBtn = document.createElement('button');
             closeBtn.textContent = '✕';
             closeBtn.style.cssText = 'border:none;background:#e53935;color:#fff;width:28px;height:28px;border-radius:4px;cursor:pointer;font-size:15px;';
@@ -602,8 +742,12 @@
 
             const hRight = document.createElement('div');
             hRight.style.cssText = 'display:flex;gap:8px;align-items:center;';
+
+            hRight.appendChild(syncBadge);
+            hRight.appendChild(syncBtn);
             hRight.appendChild(saveBtn);
             hRight.appendChild(closeBtn);
+
 
             header.appendChild(title);
             header.appendChild(hRight);
@@ -664,12 +808,19 @@
                     input.value = stockData[key] || 0;
                     input.style.cssText = 'padding:6px 10px;border:1px solid #bbb;border-radius:4px;font:14px Arial;width:100%;';
                     input.title = `Минимум: ${min}`;
+                    input.dataset.min = String(min);
+                    stockInputs[key] = input;
                     paintStockInput(input, min);
                     input.addEventListener('input', () => {
+                        const v = parseFloat(input.value) || 0;
                         const data = loadStock();
-                        data[key] = parseFloat(input.value) || 0;
+                        data[key] = v;
                         saveStock(data);
+                        const j = stockJournalGet();
+                        j[key] = { v, t: Date.now() };
+                        stockJournalSet(j);
                         paintStockInput(input, min);
+                        stockScheduleSync();   // отправок на GitHub через 3 сек после последнего ввода
                     });
 
                     row.appendChild(lbl);
@@ -698,6 +849,7 @@
         }
 
         stockOpen = true;
+        stockSync('открытие модалки');
     }
 
     function closeStockModal() {
@@ -2094,6 +2246,9 @@ function resetStatsIfNewDay() {
     }
 
     /* ===== СТАРТ ===== */
+
+    setInterval(() => { if (stockOpen) stockSync('поллинг'); }, 60000);
+
     setInterval(() => {
         if (built) {
             if (menuContainer && !document.body.contains(menuContainer)) { built = false; menuContainer = null; }

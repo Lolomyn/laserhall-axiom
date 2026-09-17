@@ -48,6 +48,7 @@
         const v = ver(code);
         try { localStorage.setItem(CACHE_KEY, code); localStorage.setItem(LASTOK_KEY, String(Date.now())); } catch (e) {}
         try { window.tmLoadedVersion = v; } catch (e) {}
+        try { window.tmGithubToken = TOKEN; } catch (e) {}   // ← добавить: токен для общей БД
         console.info(`[TM loader] запускаю v${v} из источника: ${source}`);
         try { (0, eval)(code); } catch (e) { console.error('[TM loader] ошибка выполнения:', e); }
     }
