@@ -408,8 +408,60 @@
 
     function setStatus(el, m) { if (el) el.innerHTML = `<div style="padding:24px;font:14px Arial;color:#555;">${m}</div>`; }
 
-/* ===== СКЛАД ===== */
+    /* ===== СКЛАД ===== */
     const STOCK_KEY = 'tmStockData';
+    const STOCK_DEFAULT_MIN = 2;   // граница по умолчанию: значение < 2 → красный
+
+    const STOCK_GROUPS = [
+        {
+            title: 'Китай', icon: '🇨🇳',
+            items: [
+                { k: 'Белая матовая Китай', s: 'Белая матовая' },
+                { k: 'Белая глянцевая Китай', s: 'Белая глянцевая' },
+                { k: 'Прозрачная матовая Китай', s: 'Прозрачная матовая' },
+                { k: 'Прозрачная глянцевая Китай', s: 'Прозрачная глянцевая' },
+            ]
+        },
+        {
+            title: 'Европа', icon: '🇪🇺',
+            items: [
+                { k: 'Белая матовая Европа', s: 'Белая матовая' },
+                { k: 'Белая глянцевая Европа', s: 'Белая глянцевая' },
+                { k: 'Прозрачная матовая Европа', s: 'Прозрачная матовая' },
+                { k: 'Прозрачная глянцевая Европа', s: 'Прозрачная глянцевая' },
+            ]
+        },
+        {
+            title: 'Прочие материалы', icon: '🖨️',
+            items: ['Постерная бумага', 'Холст', 'Блокаут', 'Солпэт', 'Баннер', 'Монтажная пленка']
+        },
+        {
+            title: 'Роллерные стенды', icon: '📜',
+            items: ['Роллерный стенд 850мм', 'Роллерный стенд 1000мм']
+        },
+        {
+            title: 'Чернила экосольвентные', icon: '🎨',
+            items: [
+                { k: 'Чернила экосольвентные Cyan',    s: 'Cyan',    color: '#00bcd4' },
+                { k: 'Чернила экосольвентные Magenta', s: 'Magenta', color: '#e91e63' },
+                { k: 'Чернила экосольвентные Yellow',  s: 'Yellow',  color: '#fdd835' },
+                { k: 'Чернила экосольвентные Black',   s: 'Black',   color: '#212121' },
+                { k: 'Промывочная жидкость',           s: 'Промывочная жидкость', color: '#90a4ae' },
+            ]
+        },
+        {
+            title: 'Чернила УФ LUS 210', icon: '🎨',
+            items: [
+                { k: 'Чернила УФ LUS 210 Cyan',    s: 'Cyan',    color: '#00bcd4' },
+                { k: 'Чернила УФ LUS 210 Magenta', s: 'Magenta', color: '#e91e63' },
+                { k: 'Чернила УФ LUS 210 Yellow',  s: 'Yellow',  color: '#fdd835' },
+                { k: 'Чернила УФ LUS 210 Black',   s: 'Black',   color: '#212121' },
+                { k: 'Чернила УФ LUS 210 White',   s: 'Wgite',   color: '#ffffff' },
+                { k: 'Промывочная жидкость',       s: 'Промывочная жидкость', color: '#90a4ae' },
+            ]
+        },
+    ];
+
     let stockEl = null;
     let stockOpen = false;
 
@@ -425,6 +477,78 @@
         try { localStorage.setItem(STOCK_KEY, JSON.stringify(data)); } catch (e) {}
     }
 
+    function paintStockInput(input, min) {
+        const v = parseFloat(input.value) || 0;
+        if (v < min) {
+            input.style.background = '#ffebee';
+            input.style.borderColor = '#e53935';
+            input.style.color = '#c62828';
+            input.style.fontWeight = '700';
+        } else {
+            input.style.background = '#fff';
+            input.style.borderColor = '#bbb';
+            input.style.color = '#000';
+            input.style.fontWeight = '400';
+        }
+    }
+
+    function buildStockText() {
+        const data = loadStock();
+        const lines = [];
+        lines.push('========================================');
+        lines.push('СКЛАД МАТЕРИАЛОВ — Лазерхолл ШФ');
+        lines.push(`Сохранено: ${new Date().toLocaleString('ru-RU')}`);
+        lines.push('========================================');
+        STOCK_GROUPS.forEach(g => {
+            lines.push('');
+            lines.push(`${g.title}:`);
+            g.items.forEach(it => {
+                const key = typeof it === 'string' ? it : it.k;
+                const label = typeof it === 'string' ? it : (it.s || it.k);
+                const v = data[key];
+                lines.push(`  ${label}: ${v === undefined ? 0 : v}`);
+            });
+        });
+        lines.push('');
+        lines.push('========================================');
+        return lines.join('\n');
+    }
+
+    function saveStockToFile() {
+        const now = new Date();
+        const pad = n => String(n).padStart(2, '0');
+        const filename = `Sklad_${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}_${pad(now.getHours())}-${pad(now.getMinutes())}.txt`;
+        downloadReport(buildStockText(), filename);
+    }
+
+    function saveStockAsXlsx() {
+        if (typeof XLSX === 'undefined') {
+            LOG.warn('REPORT', 'библиотека XLSX не загружена');
+            alert('Библиотека XLSX не загрузилась (нет доступа к CDN). Сохраните в .txt.');
+            return;
+        }
+        const data = loadStock();
+        const rows = [['Группа', 'Материал', 'Количество']];
+        STOCK_GROUPS.forEach(g => {
+            g.items.forEach(it => {
+                const key = typeof it === 'string' ? it : it.k;
+                const label = typeof it === 'string' ? it : (it.s || it.k);
+                rows.push([g.title, label, (data[key] === undefined ? 0 : data[key])]);
+            });
+        });
+
+        const ws = XLSX.utils.aoa_to_sheet(rows);
+        ws['!cols'] = [{ wch: 30 }, { wch: 32 }, { wch: 12 }];
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, 'Склад');
+
+        const now = new Date();
+        const pad = n => String(n).padStart(2, '0');
+        const filename = `Sklad_${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}_${pad(now.getHours())}-${pad(now.getMinutes())}.xlsx`;
+        XLSX.writeFile(wb, filename);
+        LOG.info('REPORT', 'файл склада сохранён', filename);
+    }
+
     function openStockModal() {
         if (!stockEl) {
             const overlay = document.createElement('div');
@@ -432,56 +556,137 @@
             overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:100001;display:flex;align-items:center;justify-content:center;';
 
             const modal = document.createElement('div');
-            modal.style.cssText = 'background:#fff;width:70vw;max-width:900px;height:80vh;border-radius:8px;display:flex;flex-direction:column;box-shadow:0 10px 40px rgba(0,0,0,.4);overflow:hidden;';
+            modal.style.cssText = 'background:#fff;width:70vw;max-width:900px;height:80vh;border-radius:8px;display:flex;flex-direction:column;box-shadow:0 10px 40px rgba(0,0,0,.4);overflow:hidden;position:relative;';
 
             const header = document.createElement('div');
             header.style.cssText = 'padding:12px 16px;background:#f5f5f5;border-bottom:1px solid #ddd;display:flex;align-items:center;justify-content:space-between;font:600 16px Arial;flex-shrink:0;';
 
             const title = document.createElement('span');
-            title.textContent = 'Склад материалов';
+            title.innerHTML = 'Склад материалов &nbsp;<span style="font:12px Arial;color:#c62828;font-weight:400;">🔴 — ниже минимума, пора заказать</span>';
 
             const closeBtn = document.createElement('button');
             closeBtn.textContent = '✕';
             closeBtn.style.cssText = 'border:none;background:#e53935;color:#fff;width:28px;height:28px;border-radius:4px;cursor:pointer;font-size:15px;';
             closeBtn.addEventListener('click', closeStockModal);
 
+            const saveBtn = document.createElement('button');
+            saveBtn.textContent = '💾 Сохранить в файл';
+            saveBtn.title = 'Скачать текущие значения склада (.txt или .xlsx)';
+            saveBtn.style.cssText = 'border:1px solid #2e7d32;background:#e8f5e9;color:#2e7d32;border-radius:4px;padding:4px 10px;cursor:pointer;font:600 13px Arial;';
+
+            const saveMenu = document.createElement('div');
+            saveMenu.style.cssText = 'display:none;position:absolute;top:48px;right:14px;background:#fff;border:1px solid #bbb;border-radius:6px;box-shadow:0 6px 18px rgba(0,0,0,.25);padding:6px;z-index:10;min-width:170px;';
+            saveMenu.innerHTML = `
+                <div data-fmt="txt"  style="padding:6px 12px;cursor:pointer;font:13px Arial;border-radius:4px;">📄 Сохранить в .txt</div>
+                <div data-fmt="xlsx" style="padding:6px 12px;cursor:pointer;font:13px Arial;border-radius:4px;">📊 Сохранить в .xlsx</div>
+            `;
+            saveMenu.querySelectorAll('div[data-fmt]').forEach(d => {
+                d.addEventListener('mouseenter', () => d.style.background = '#e3f2fd');
+                d.addEventListener('mouseleave', () => d.style.background = 'transparent');
+                d.addEventListener('click', () => {
+                    saveMenu.style.display = 'none';
+                    if (d.dataset.fmt === 'txt') saveStockToFile();
+                    else saveStockAsXlsx();
+                });
+            });
+
+            saveBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                saveMenu.style.display = (saveMenu.style.display === 'none') ? 'block' : 'none';
+            });
+            document.addEventListener('click', (e) => {
+                if (saveMenu.style.display !== 'none' && !saveMenu.contains(e.target) && e.target !== saveBtn) {
+                    saveMenu.style.display = 'none';
+                }
+            });
+
+            const hRight = document.createElement('div');
+            hRight.style.cssText = 'display:flex;gap:8px;align-items:center;';
+            hRight.appendChild(saveBtn);
+            hRight.appendChild(closeBtn);
+
             header.appendChild(title);
-            header.appendChild(closeBtn);
+            header.appendChild(hRight);
 
             const body = document.createElement('div');
             body.style.cssText = 'flex:1;overflow-y:auto;padding:16px;';
 
             const stockData = loadStock();
-            const grid = document.createElement('div');
-            grid.style.cssText = 'display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:12px;';
+            const wrap = document.createElement('div');
+            wrap.style.cssText = 'display:flex;flex-direction:column;gap:18px;';
 
-            STOCK_MATERIALS.forEach(mat => {
-                const row = document.createElement('div');
-                row.style.cssText = 'display:flex;flex-direction:column;gap:4px;';
+            STOCK_GROUPS.forEach(group => {
+                const section = document.createElement('div');
 
-                const label = document.createElement('label');
-                label.textContent = mat;
-                label.style.cssText = 'font:13px Arial;color:#555;font-weight:500;';
+                const gTitle = document.createElement('div');
+                gTitle.style.cssText = 'font:600 14px Arial;color:#37474f;margin-bottom:8px;padding-bottom:4px;border-bottom:2px solid #90a4ae;display:flex;align-items:center;gap:7px;';
+                if (group.icon) {
+                    const gi = document.createElement('span');
+                    gi.textContent = group.icon;
+                    gi.style.cssText = 'font-size:16px;line-height:1;';
+                    gTitle.appendChild(gi);
+                }
+                const gtText = document.createElement('span');
+                gtText.textContent = group.title;
+                gTitle.appendChild(gtText);
 
-                const input = document.createElement('input');
-                input.type = 'number';
-                input.value = stockData[mat] || 0;
-                input.style.cssText = 'padding:6px 10px;border:1px solid #bbb;border-radius:4px;font:14px Arial;width:100%;';
-                input.addEventListener('input', () => {
-                    const data = loadStock();
-                    data[mat] = parseFloat(input.value) || 0;
-                    saveStock(data);
+                const grid = document.createElement('div');
+                grid.style.cssText = 'display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:10px;';
+
+                group.items.forEach(it => {
+                    const key = typeof it === 'string' ? it : it.k;
+                    const label = typeof it === 'string' ? it : (it.s || it.k);
+                    const min = (typeof it === 'object' && it.min != null) ? it.min : STOCK_DEFAULT_MIN;
+
+                    const row = document.createElement('div');
+                    row.style.cssText = 'display:flex;flex-direction:column;gap:3px;';
+
+                    const lbl = document.createElement('label');
+                    lbl.style.cssText = 'font:12px Arial;color:#555;font-weight:500;display:flex;align-items:center;gap:5px;';
+                    if (typeof it === 'object' && it.color) {
+                        const dot = document.createElement('span');
+                        dot.style.cssText = `width:10px;height:10px;border-radius:50%;background:${it.color};border:1px solid rgba(0,0,0,.25);flex:0 0 auto;`;
+                        dot.title = label;
+                        lbl.appendChild(dot);
+                    }
+                    if (typeof it === 'object' && it.i) {
+                        const ii = document.createElement('span');
+                        ii.textContent = it.i;
+                        ii.style.cssText = 'font-size:13px;line-height:1;';
+                        lbl.appendChild(ii);
+                    }
+                    const ltText = document.createElement('span');
+                    ltText.textContent = label;
+                    lbl.appendChild(ltText);
+
+                    const input = document.createElement('input');
+                    input.type = 'number';
+                    input.value = stockData[key] || 0;
+                    input.style.cssText = 'padding:6px 10px;border:1px solid #bbb;border-radius:4px;font:14px Arial;width:100%;';
+                    input.title = `Минимум: ${min}`;
+                    paintStockInput(input, min);
+                    input.addEventListener('input', () => {
+                        const data = loadStock();
+                        data[key] = parseFloat(input.value) || 0;
+                        saveStock(data);
+                        paintStockInput(input, min);
+                    });
+
+                    row.appendChild(lbl);
+                    row.appendChild(input);
+                    grid.appendChild(row);
                 });
 
-                row.appendChild(label);
-                row.appendChild(input);
-                grid.appendChild(row);
+                section.appendChild(gTitle);
+                section.appendChild(grid);
+                wrap.appendChild(section);
             });
 
-            body.appendChild(grid);
+            body.appendChild(wrap);
 
             modal.appendChild(header);
             modal.appendChild(body);
+            modal.appendChild(saveMenu);
             overlay.appendChild(modal);
 
             overlay.addEventListener('click', e => { if (e.target === overlay) closeStockModal(); });
