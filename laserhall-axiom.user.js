@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Laserhall Axiom
 // @namespace    https://laserhall.simprint.pro/
-// @version      53.6.0
+// @version      53.7.0
 // @description  
 // @match        https://laserhall.simprint.pro/axiom/index_postpress.php
 // @grant        none
@@ -1617,9 +1617,8 @@ async function checkOrderSections(orderId, orderNum) {
             document.body.appendChild(iframe);
             const t0 = Date.now();
             let started = false, finished = false;
-            
             LOG.debug('FORM', `создан iframe для ${productId}`);
-            
+
             const finish = (doc, reason) => {
                 if (finished) return;
                 finished = true;
@@ -1638,7 +1637,7 @@ async function checkOrderSections(orderId, orderNum) {
                     if (!started && typeof win.ShowPostpressForm === 'function') {
                         started = true;
                         LOG.debug('FORM', `вызов ShowPostpressForm для ${productId}`);
-                        try { win.ShowPostpressForm(productId, 'postpress'); } catch (e) { LOG.error('FORM', 'ошибка ShowPostpressForm', e); }
+                        try { win.ShowPostpressForm(productId, 'postpress'); } catch (e) {}
                         return;
                     }
                     if (!started) return;
@@ -1728,7 +1727,6 @@ async function checkOrderSections(orderId, orderNum) {
             if (!client) client = findLabel(/^(клиент|заказчик):?$/i);
             if (!manager) manager = findLabel(/^менеджер:?$/i);
         }
-
         LOG.debug('PARSE-CM', `результат для ${doc.location ? doc.location.href : 'iframe'}: клиент="${client}", менеджер="${manager}"`);
         return { client, manager };
     }
