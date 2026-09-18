@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Laserhall Axiom
 // @namespace    https://laserhall.simprint.pro/
-// @version      54.1.0
+// @version      54.2.0
 // @description  
 // @match        https://laserhall.simprint.pro/axiom/index_postpress.php
 // @grant        none
@@ -1637,6 +1637,14 @@ async function checkOrderSections(orderId, orderNum) {
         if (!row) return;
         loadReadinessForRows([row], left ? SHF_LEFT.value : SHF_RIGHT.value);
     }
+
+    function firstNumber(s) {
+        const t = String(s || '').replace(/\u00a0/g, ' ');
+        // число с тысячами ("1 720", "12 345") или обычное
+        const m = t.match(/\d+(?:\s\d{3})+(?!\d)|\d+/);
+        return m ? m[0].replace(/\s+/g, '') : '0';
+    }
+
     /* --- Парсинг операций (V1 + V2) --- */
     function parseOperations(doc, sectorFilter, isV2 = false) {
         if (isV2) {
