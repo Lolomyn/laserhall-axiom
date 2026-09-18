@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Laserhall Axiom
 // @namespace    https://laserhall.simprint.pro/
-// @version      54.5.4
+// @version      54.6.0
 // @description  
 // @match        https://laserhall.simprint.pro/axiom/index_postpress.php
 // @grant        none
@@ -695,7 +695,10 @@
             
             const closeBtn = document.createElement('button');
             closeBtn.textContent = '✕';
-            closeBtn.style.cssText = 'border:none;background:#e53935;color:#fff;width:28px;height:28px;border-radius:4px;cursor:pointer;font-size:15px;';
+            closeBtn.title = 'Закрыть';
+            closeBtn.style.cssText = 'border:none;background:transparent;color:#e53935;width:28px;height:28px;border-radius:4px;cursor:pointer;font-size:18px;line-height:1;padding:0;';
+            closeBtn.addEventListener('mouseenter', () => { closeBtn.style.background = '#ffebee'; });
+            closeBtn.addEventListener('mouseleave', () => { closeBtn.style.background = 'transparent'; });
             closeBtn.addEventListener('click', closeStockModal);
 
             const saveBtn = document.createElement('button');
@@ -877,7 +880,10 @@
 
             const cl = document.createElement('button');
             cl.textContent = '✕';
-            cl.style.cssText = 'border:none;background:#e53935;color:#fff;width:28px;height:28px;border-radius:4px;cursor:pointer;font-size:15px;';
+            cl.title = 'Закрыть';
+            cl.style.cssText = 'border:none;background:transparent;color:#e53935;width:28px;height:28px;border-radius:4px;cursor:pointer;font-size:18px;line-height:1;padding:0;';
+            cl.addEventListener('mouseenter', () => { cl.style.background = '#ffebee'; });
+            cl.addEventListener('mouseleave', () => { cl.style.background = 'transparent'; });
             cl.addEventListener('click', closeUnifiedModal);
 
             r.appendChild(ppBtn);
@@ -1024,8 +1030,11 @@
             pTi.style.color = '#1565c0';
 
             const pClose = document.createElement('button');
-            pClose.textContent = '✕ Закрыть';
-            pClose.style.cssText = 'border:1px solid #1565c0;background:#fff;color:#1565c0;border-radius:4px;padding:2px 8px;cursor:pointer;font:14px Arial;';
+            pClose.textContent = '✕';
+            pClose.title = 'Закрыть';
+            pClose.style.cssText = 'border:none;background:transparent;color:#e53935;width:26px;height:26px;border-radius:4px;cursor:pointer;font-size:17px;line-height:1;padding:0;';
+            pClose.addEventListener('mouseenter', () => { pClose.style.background = '#ffebee'; });
+            pClose.addEventListener('mouseleave', () => { pClose.style.background = 'transparent'; });
             pClose.addEventListener('click', closePrepressModal);
 
             pH.appendChild(pTi);
@@ -1517,10 +1526,15 @@ async function checkOrderSections(orderId, orderNum) {
         hdr.style.cssText = 'padding:8px 14px;background:#f5f5f5;border-bottom:1px solid #ddd;display:flex;align-items:center;justify-content:space-between;font:600 14px Arial;flex-shrink:0;';
         const t = document.createElement('span');
         t.textContent = 'Заказ ' + productId;
+
         const cl = document.createElement('button');
         cl.textContent = '✕';
-        cl.style.cssText = 'border:none;background:#e53935;color:#fff;width:26px;height:26px;border-radius:4px;cursor:pointer;font-size:14px;';
+        cl.title = 'Закрыть';
+        cl.style.cssText = 'border:none;background:transparent;color:#e53935;width:26px;height:26px;border-radius:4px;cursor:pointer;font-size:17px;line-height:1;padding:0;';
+        cl.addEventListener('mouseenter', () => { cl.style.background = '#ffebee'; });
+        cl.addEventListener('mouseleave', () => { cl.style.background = 'transparent'; });
         cl.addEventListener('click', () => closeOrderModal());
+
         hdr.appendChild(t);
         hdr.appendChild(cl);
 
