@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Laserhall Axiom
 // @namespace    https://laserhall.simprint.pro/
-// @version      54.9.0
+// @version      55.0.0
 // @description  
 // @match        https://laserhall.simprint.pro/axiom/index_postpress.php
 // @grant        none
@@ -2637,7 +2637,7 @@ async function checkOrderSections(orderId, orderNum) {
             const hLeft = document.createElement('div');
             hLeft.style.cssText = 'display:flex;align-items:center;gap:10px;';
             const title = document.createElement('span');
-            title.textContent = 'Статистика участка ШФ';
+            title.textContent = '📊 Статистика участка ШФ';
             const badge = document.createElement('span');
             badge.className = 'tm-stats-sync-badge';
             badge.title = 'Статус синхронизации (клик — синхронизировать сейчас)';
@@ -2674,7 +2674,7 @@ async function checkOrderSections(orderId, orderNum) {
             header.appendChild(hRight);
 
             const body = document.createElement('div');
-            body.style.cssText = 'flex:1;overflow-y:auto;padding:14px 16px;font:13px Arial;color:#333;';
+            body.style.cssText = 'flex:1;overflow-y:auto;padding:14px 16px;font:13px Arial;color:#333;background:#fafbfc;';
             statsContentEl = body;
 
             box.appendChild(header);
@@ -2701,6 +2701,28 @@ async function checkOrderSections(orderId, orderNum) {
         statsOpen ? closeStatsModal() : openStatsModal();
     }
 
+    const PRODUCT_ICONS = {
+        'Смоляные наклейки / стикерпаки': '🫧',
+        'Стикерпаки': '✨',
+        'Роллерные стенды': '📜',
+        'Картины': '🖼️',
+        'Таблички': '🪧',
+        'Наклейки': '🏷️',
+        'Постеры': '📄',
+        'Наклейки на цветной пленке': '🌈',
+    };
+    const productIcon = n => PRODUCT_ICONS[n] || '📦';
+
+    function materialIcon(name) {
+        const n = (name || '').toLowerCase();
+        if (n.includes('матовая') || n.includes('глянцевая') || n.includes('пленка') || n.includes('плёнка')) return '🎞️';
+        if (n.includes('бумага')) return '📄';
+        if (n.includes('холст')) return '🖼️';
+        if (n.includes('баннер')) return '🚩';
+        if (n.includes('солпэт') || n.includes('блокаут') || n.includes('бэклит')) return '🌫️';
+        return '🧻';
+    }
+
     function renderStatsContent() {
         if (!statsContentEl) return;
         const base = statsShared || loadStatsCache();
@@ -2709,17 +2731,42 @@ async function checkOrderSections(orderId, orderNum) {
         const mats = Object.entries(statsMaterialsTotals()).filter(([_, c]) => c > 0).sort((a, b) => b[1] - a[1]);
         const prods = Object.entries(statsProductsTotals()).filter(([_, c]) => c > 0).sort((a, b) => b[1] - a[1]);
 
-        let html = '';
-        html += `<div style="display:flex;align-items:baseline;gap:10px;margin-bottom:12px;">
-            <span style="font:600 14px Arial;color:#37474f;">Сделанные заказы за сегодня:</span>
-            <span style="font:700 24px Arial;color:#2e7d32;">${today}</span>
+        const card = 'background:#fff;border:1px solid #e0e4e8;border-radius:8px;padding:12px 14px;box-shadow:0 1px 3px rgba(0,0,0,.06);';
+        const secHead = (icon, text) => `<div style="display:flex;align-items:center;gap:7px;font:600 13px Arial;color:#37474f;letter-spacing:.3px;text-transform:uppercase;border-bottom:2px solid #cfd8dc;padding-bottom:5px;margin-bottom:8px;"><span style="font-size:15px;">${icon}</span><span>${text}</span></div>`;
+        const row = (icon, name, count, badge) => `<div style="display:flex;align-items:center;gap:8px;padding:4px 6px;">
+            <span style="font-size:14px;flex:0 0 auto;">${icon}</span>
+            <span style="flex:1 1 auto;font:13px Arial;color:#333;">${escapeHtml(name)}</span>
+            <span style="flex:0 0 auto;font:700 12px Arial;padding:2px 9px;border-radius:10px;${badge}">${count}</span>
         </div>`;
-        html += `<div style="font:600 13px Arial;color:#37474f;margin-bottom:8px;">Неделя ${formatDateRu(week)} – ${formatDateRu(getWeekEndIso(week))}</div>`;
-        html += `<div style="margin-bottom:12px;"><div style="font:600 13px Arial;color:#555;margin-bottom:4px;">Материалы:</div>`;
-        html += mats.length ? mats.map(([n, c]) => `<div style="padding:2px 0;">• ${escapeHtml(n)}: <b>${c}</b></div>`).join('') : '<div style="color:#999;">нет данных</div>';
+        const zebra = i => i % 2 ? 'background:#f7f9fa;' : '';
+
+        let html = '';
+
+        // главная карточка дня
+        html += `<div style="${card}border-left:4px solid #2e7d32;background:linear-gradient(90deg,#f2faf4,#ffffff 60%);display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
+            <div style="font:600 14px Arial;color:#37474f;">Сделанные заказы за сегодня</div>
+            <div style="font:800 26px Arial;color:#2e7d32;">${today}</div>
+        </div>`;
+
+        // период недели
+        html += `<div style="font:12px Arial;color:#78909c;margin:0 0 10px 2px;">📅 Неделя: ${formatDateRu(week)} – ${formatDateRu(getWeekEndIso(week))}</div>`;
+
+        // материалы
+        html += `<div style="${card}margin-bottom:12px;">${secHead('🎞️', 'Материалы')}`;
+        if (mats.length) {
+            html += mats.map(([n, c], i) => `<div style="${zebra(i)}border-radius:4px;">${row(materialIcon(n), n, c, 'background:#e8f5e9;color:#2e7d32;')}</div>`).join('');
+        } else {
+            html += `<div style="color:#999;font:13px Arial;padding:4px 6px;">нет данных</div>`;
+        }
         html += `</div>`;
-        html += `<div><div style="font:600 13px Arial;color:#555;margin-bottom:4px;">Изделия:</div>`;
-        html += prods.length ? prods.map(([n, c]) => `<div style="padding:2px 0;">• ${escapeHtml(n)}: <b>${c}</b></div>`).join('') : '<div style="color:#999;">нет данных</div>';
+
+        // изделия
+        html += `<div style="${card}">${secHead('🏷️', 'Изделия')}`;
+        if (prods.length) {
+            html += prods.map(([n, c], i) => `<div style="${zebra(i)}border-radius:4px;">${row(productIcon(n), n, c, 'background:#e3f2fd;color:#1565c0;')}</div>`).join('');
+        } else {
+            html += `<div style="color:#999;font:13px Arial;padding:4px 6px;">нет данных</div>`;
+        }
         html += `</div>`;
 
         statsContentEl.innerHTML = html;
