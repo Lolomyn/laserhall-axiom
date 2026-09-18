@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Laserhall Axiom
 // @namespace    https://laserhall.simprint.pro/
-// @version      54.5.2
+// @version      54.5.3
 // @description  
 // @match        https://laserhall.simprint.pro/axiom/index_postpress.php
 // @grant        none
@@ -200,18 +200,18 @@
         return lines.join('\n');
     }
 
-    function exportMaterialStatsReport() {
-        const hasData = Object.values(materialStats.materials || {}).some(c => c > 0) ||
-                        Object.values(materialStats.products || {}).some(c => c > 0) ||
-                        Object.keys(materialStats.doneByDay || {}).length > 0;
-        if (!hasData) {
-            LOG.warn('REPORT', 'нет данных для отчёта');
-            return false;
-        }
-        const filename = `SHF_otchet_${materialStats.weekStart}_${getWeekEndIso(materialStats.weekStart)}.txt`;
-        downloadReport(buildReportText(materialStats), filename);
-        return true;
-    }
+    // function exportMaterialStatsReport() {
+    //     const hasData = Object.values(materialStats.materials || {}).some(c => c > 0) ||
+    //                     Object.values(materialStats.products || {}).some(c => c > 0) ||
+    //                     Object.keys(materialStats.doneByDay || {}).length > 0;
+    //     if (!hasData) {
+    //         LOG.warn('REPORT', 'нет данных для отчёта');
+    //         return false;
+    //     }
+    //     const filename = `SHF_otchet_${materialStats.weekStart}_${getWeekEndIso(materialStats.weekStart)}.txt`;
+    //     downloadReport(buildReportText(materialStats), filename);
+    //     return true;
+    // }
 
     /* ================================================== */
 
@@ -2041,7 +2041,7 @@ async function checkOrderSections(orderId, orderNum) {
                 версия: isV2 ? 'V2' : 'V1',
                 status, isPacked: st.isPacked, isStopped: st.isStopped, isPostpressReady: st.isPostpressReady,
                 qty: qtyNum, материалов: materials.length, изделий: products.length,
-                клиент: clientParsed.client || '—'
+                клиент: clientParsed || '—'  // просто строка
             });
 
             return { text, status, title: orderTitle, tirazh, qty: qtyNum, description, isStopped: st.isStopped, isPacked: st.isPacked, isPostpressReady: st.isPostpressReady, materials, products, client: clientParsed };
@@ -2329,25 +2329,25 @@ async function checkOrderSections(orderId, orderNum) {
 
     let shfStats = loadStats();
 
-function resetStatsIfNewDay() {
-        const t = todayStr();
-        if (shfStats.day !== t) {
-            LOG.info('STATS', 'новый день', { было: shfStats.day, стало: t, архив: shfStats.count });
-            if (shfStats.count > 0) {
-                if (!materialStats.doneByDay) materialStats.doneByDay = {};
-                const prev = normalizeDayEntry(materialStats.doneByDay[shfStats.day]);
-                materialStats.doneByDay[shfStats.day] = {
-                    count: prev.count + shfStats.count,
-                    ids: prev.ids.concat(shfStats.counted.slice()) // номера заказов за день
-                };
-                saveMaterialStats(materialStats);
-            }
-            shfStats.day = t;
-            shfStats.count = 0;
-            shfStats.counted = [];
-            saveStats(shfStats);
-        }
-    }
+//      function resetStatsIfNewDay() {
+//         const t = todayStr();
+//         if (shfStats.day !== t) {
+//             LOG.info('STATS', 'новый день', { было: shfStats.day, стало: t, архив: shfStats.count });
+//             if (shfStats.count > 0) {
+//                 if (!materialStats.doneByDay) materialStats.doneByDay = {};
+//                 const prev = normalizeDayEntry(materialStats.doneByDay[shfStats.day]);
+//                 materialStats.doneByDay[shfStats.day] = {
+//                     count: prev.count + shfStats.count,
+//                     ids: prev.ids.concat(shfStats.counted.slice()) // номера заказов за день
+//                 };
+//                 saveMaterialStats(materialStats);
+//             }
+//             shfStats.day = t;
+//             shfStats.count = 0;
+//             shfStats.counted = [];
+//             saveStats(shfStats);
+//         }
+//     }
 
     /* ===== Вспомогательные даты (восстановить, если удалились со старой статистикой) ===== */
     const todayStr = () => {
