@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Laserhall Axiom
 // @namespace    https://laserhall.simprint.pro/
-// @version      53.8.0
+// @version      53.8.1
 // @description  
 // @match        https://laserhall.simprint.pro/axiom/index_postpress.php
 // @grant        none
@@ -1868,7 +1868,7 @@ async function checkOrderSections(orderId, orderNum) {
                 версия: isV2 ? 'V2' : 'V1',
                 status, isPacked: st.isPacked, isStopped: st.isStopped, isPostpressReady: st.isPostpressReady,
                 qty: qtyNum, материалов: materials.length, изделий: products.length,
-                клиент: cm.client || '—', менеджер: cm.manager || '—'
+                клиент: cm.client || '—'
             });
 
             return { text, status, title: orderTitle, tirazh, qty: qtyNum, description, isStopped: st.isStopped, isPacked: st.isPacked, isPostpressReady: st.isPostpressReady, materials, products, client: clientParsed };
@@ -1950,7 +1950,7 @@ async function checkOrderSections(orderId, orderNum) {
                         const qtyIdxRaw = idxBy('кол-во', 'кол-во');
                         const nameIdx = nameIdxRaw >= 0 ? nameIdxRaw : 3;
                         const qtyIdx = qtyIdxRaw >= 0 ? qtyIdxRaw : 6;
-                        LOG.debug('IFRAME', `индексы колонок: nameIdx=${nameIdx}, clientIdx=${clientIdx}, managerIdx=${managerIdx}, qtyIdx=${qtyIdx}`);
+                        LOG.debug('IFRAME', `индексы колонок: nameIdx=${nameIdx}, clientIdx=${clientIdx}, qtyIdx=${qtyIdx}`);
 
                         trs.forEach(tr => {
                             const tds = Array.from(tr.querySelectorAll('td'));
