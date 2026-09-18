@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Laserhall Axiom
 // @namespace    https://laserhall.simprint.pro/
-// @version      53.7.0
+// @version      53.8.0
 // @description  
 // @match        https://laserhall.simprint.pro/axiom/index_postpress.php
 // @grant        none
@@ -32,7 +32,7 @@
     const SHF_LEFT = { label: '1 / ШФ', title: '1 / ШФ', value: '5' };
     const SHF_RIGHT = { label: '14 / ШФ постпечать', title: '14 / ШФ постпечать', value: '86' };
 
-    const COL_HEADERS_SHF = ['№', 'Название', 'Клиент', 'Менеджер', 'Описание', 'Кол-во', 'Готовность'];
+    const COL_HEADERS_SHF = ['№', 'Название', 'Клиент', 'Описание', 'Кол-во', 'Готовность'];
     const PREPRESS_COL_HEADERS = ['№', 'Клиент', 'Название', 'Менеджер'];
 
     const AUTO_REFRESH_INTERVAL = 60000;
@@ -1360,7 +1360,7 @@ async function checkOrderSections(orderId, orderNum) {
                 const right = c.alignRight ? 'text-align:right;' : '';
                 const bold = /bold/.test(c.cls) ? 'font-weight:700;' : '';
                 const content = c.html || escapeHtml(c.text);
-                const fontSize = idx === 4 ? 'font-size:13px;line-height:1.4;' : '';
+                const fontSize = idx === 3 ? 'font-size:13px;line-height:1.4;' : '';
 
                 let cellContent = content;
                 if (idx === 0) {
@@ -1666,12 +1666,11 @@ async function checkOrderSections(orderId, orderNum) {
         return '';
     }
 
-    function parseClientManager(doc, isV2) {
-        let client = '', manager = '';
+    function parseClient(doc, isV2) {
+        let client = '';
 
         const extractValue = (valueEl) => {
             if (!valueEl) return '';
-            // приоритет: single-label-text → assistive-text → input value → общий textContent
             const candidates = [
                 valueEl.querySelector('.multiselect-single-label-text'),
                 valueEl.querySelector('.multiselect-assistive-text'),
@@ -1691,44 +1690,35 @@ async function checkOrderSections(orderId, orderNum) {
                 const v = rowEl.querySelector('.axui-form-value');
                 if (!l) return;
                 const t = (l.textContent || '').trim().toLowerCase();
-                if (/^(заказчик|клиент)/i.test(t) && !client) client = extractValue(v);
-                if (/^менеджер/i.test(t) && !manager) manager = extractValue(v);
+                if (/^(заказчик|клиент)/i.test(t) && !client) {
+                    client = extractValue(v);
+                }
             });
         };
 
         if (isV2) {
-            // ищем строго в основном блоке информации заказа
-            const mainTable = doc.querySelector('.axui-form-table.pfv2-main-info-table') ||
-                              doc.querySelector('.pfv2-main-info-table');
+            const mainTable = doc.querySelector('.axui-form-table.pfv2-main-info-table') || doc.querySelector('.pfv2-main-info-table');
             findInRows(mainTable);
-            // fallback: если основного блока нет — по всей форме, но только в верхней её части
-            if (!client || !manager) findInRows(doc);
+            if (!client) findInRows(doc);
         } else {
-            // V1: label с двоеточием "Клиент:", "Менеджер:"
             findInRows(doc);
         }
 
-        // финальный fallback по любым текстовым узлам
-        if (!client || !manager) {
-            const findLabel = (re) => {
-                const nodes = doc.querySelectorAll('td, th, div, span, dt, dd');
-                for (const el of nodes) {
-                    if (el.children.length) continue;
-                    const t = (el.textContent || '').trim();
-                    if (!re.test(t)) continue;
-                    let v = '';
-                    if (el.nextElementSibling) v = el.nextElementSibling.textContent.trim();
-                    else if (el.parentElement && el.parentElement.nextElementSibling) v = el.parentElement.nextElementSibling.textContent.trim();
-                    v = v.replace(/\s+/g, ' ').trim();
-                    if (v) return v;
-                }
-                return '';
-            };
-            if (!client) client = findLabel(/^(клиент|заказчик):?$/i);
-            if (!manager) manager = findLabel(/^менеджер:?$/i);
+        if (!client) {
+            const nodes = doc.querySelectorAll('td, th, div, span, dt, dd');
+            for (const el of nodes) {
+                if (el.children.length) continue;
+                const t = (el.textContent || '').trim();
+                if (!/^(клиент|заказчик):?$/i.test(t)) continue;
+                let v = '';
+                if (el.nextElementSibling) v = el.nextElementSibling.textContent.trim();
+                else if (el.parentElement && el.parentElement.nextElementSibling) v = el.parentElement.nextElementSibling.textContent.trim();
+                v = v.replace(/\s+/g, ' ').trim();
+                if (v) { client = v; break; }
+            }
         }
-        LOG.info('PARSE-CM', `результат для ${doc.location ? doc.location.href : 'iframe'}: клиент="${client}", менеджер="${manager}"`);
-        return { client, manager };
+
+        return client;
     }
 
     async function fetchReadiness(productId, sectorFilter) {
@@ -1826,8 +1816,8 @@ async function checkOrderSections(orderId, orderNum) {
                 }
             }
 
-            // КЛИЕНТ / МЕНЕДЖЕР
-            const cm = parseClientManager(doc, isV2);
+            // КЛИЕНТ
+            const clientParsed = parseClient(doc, isV2);
 
             // МАТЕРИАЛЫ
             const materials = [];
@@ -1881,7 +1871,7 @@ async function checkOrderSections(orderId, orderNum) {
                 клиент: cm.client || '—', менеджер: cm.manager || '—'
             });
 
-            return { text, status, title: orderTitle, tirazh, qty: qtyNum, description, isStopped: st.isStopped, isPacked: st.isPacked, isPostpressReady: st.isPostpressReady, materials, products, client: cm.client, manager: cm.manager };
+            return { text, status, title: orderTitle, tirazh, qty: qtyNum, description, isStopped: st.isStopped, isPacked: st.isPacked, isPostpressReady: st.isPostpressReady, materials, products, client: clientParsed };
         } catch (e) {
             LOG.error('READY', 'ошибка', productId, e);
             return { text: '—', status: 'unknown', title: '', tirazh: '', qty: 0, description: '', isStopped: false, isPacked: false, isPostpressReady: false, materials: [], products: [] };
@@ -1912,11 +1902,10 @@ async function checkOrderSections(orderId, orderNum) {
                     }
                     if (matchTr.children[1] && row.cells[1]) matchTr.children[1].textContent = row.cells[1].text;
                     if (matchTr.children[2] && row.cells[2]) matchTr.children[2].textContent = row.cells[2].text;
-                    if (matchTr.children[3] && row.cells[3]) matchTr.children[3].textContent = row.cells[3].text;
-                    if (matchTr.children[4] && row.cells[4]) matchTr.children[4].innerHTML = row.cells[4].html || row.cells[4].text;
-                    if (matchTr.children[5] && row.cells[5]) matchTr.children[5].textContent = row.cells[5].text;
+                    if (matchTr.children[3] && row.cells[3]) matchTr.children[3].innerHTML = row.cells[3].html || row.cells[3].text;
+                    if (matchTr.children[4] && row.cells[4]) matchTr.children[4].textContent = row.cells[4].text;
                     const lastTd = matchTr.lastElementChild;
-                    if (lastTd && row.cells[6]) lastTd.textContent = row.cells[6].text;
+                    if (lastTd && row.cells[5]) lastTd.textContent = row.cells[5].text;
                     if (rowBg) matchTr.style.background = rowBg;
                     else matchTr.style.background = '';
                 } else {
@@ -1958,7 +1947,6 @@ async function checkOrderSections(orderId, orderNum) {
                         const idxBy = (...subs) => ths.findIndex(t => subs.some(s => t.includes(s)));
                         const nameIdxRaw = idxBy('назв');
                         const clientIdx = idxBy('клиент', 'заказчик');
-                        const managerIdx = idxBy('менеджер');
                         const qtyIdxRaw = idxBy('кол-во', 'кол-во');
                         const nameIdx = nameIdxRaw >= 0 ? nameIdxRaw : 3;
                         const qtyIdx = qtyIdxRaw >= 0 ? qtyIdxRaw : 6;
@@ -1979,14 +1967,12 @@ async function checkOrderSections(orderId, orderNum) {
                             const qtyMatch = qtyText.match(/(\d+)/);
                             const qtyClean = qtyMatch ? qtyMatch[1] : qtyText;
                             const client = (clientIdx >= 0 && cells[clientIdx]) ? cells[clientIdx].text : '';
-                            const manager = (managerIdx >= 0 && cells[managerIdx]) ? cells[managerIdx].text : '';
                             rows.push({
-                                displayNum, productId, client, manager,
+                                displayNum, productId, client,
                                 cells: [
                                     cells[0],
                                     cells[nameIdx] || { text: '', html: '', cls: '', alignRight: false },
                                     { text: client || '—', html: '', cls: '', alignRight: false },
-                                    { text: manager || '—', html: '', cls: '', alignRight: false },
                                     { text: '⏳', html: '', cls: '', alignRight: false },
                                     { text: qtyClean, html: '', cls: cells[qtyIdx] ? cells[qtyIdx].cls : '', alignRight: true },
                                     { text: '⏳', html: '', cls: '', alignRight: false }
@@ -2036,17 +2022,15 @@ async function checkOrderSections(orderId, orderNum) {
             row._materials = result.materials;
             row._products = result.products;
             row._productQty = result.qty || 0;
-            row.cells[6] = { text: result.text, html: '', cls: '', alignRight: false };
+            row.cells[5] = { text: result.text, html: '', cls: '', alignRight: false };  // Готовность
             row._status = result.status;
             row._isStopped = result.isStopped;
 
             if (result.title) row.cells[1] = { text: result.title, html: '', cls: '', alignRight: false };
             if (result.client) row.client = result.client;
-            if (result.manager) row.manager = result.manager;
             row.cells[2] = { text: row.client || '—', html: '', cls: '', alignRight: false };
-            row.cells[3] = { text: row.manager || '—', html: '', cls: '', alignRight: false };
-            if (result.tirazh) row.cells[5] = { text: result.tirazh, html: '', cls: row.cells[5] ? row.cells[5].cls : '', alignRight: true };
-            row.cells[4] = { text: '', html: result.description || '—', cls: '', alignRight: false };
+            row.cells[3] = { text: '', html: result.description || '—', cls: '', alignRight: false };  // Описание
+            if (result.tirazh) row.cells[4] = { text: result.tirazh, html: '', cls: row.cells[4] ? row.cells[4].cls : '', alignRight: true };
 
             updateShfRowDom(row);
         }, 3);
