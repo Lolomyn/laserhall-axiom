@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Laserhall Axiom
 // @namespace    https://laserhall.simprint.pro/
-// @version      54.0.0
+// @version      54.1.0
 // @description  
 // @match        https://laserhall.simprint.pro/axiom/index_postpress.php
 // @grant        none
@@ -1523,6 +1523,45 @@ async function checkOrderSections(orderId, orderNum) {
     /* ===== МОДАЛКА ЗАКАЗА (поверх основной) ===== */
     let orderEl = null;
 
+    // Фиксация шапки заказа сверху + скрытие меню сайта (внутри iframe)
+    function pinOrderChrome(frame) {
+        const doc = frame.contentDocument;
+        const win = frame.contentWindow;
+        if (!doc || !doc.body) return;
+
+        // прячем верхнее меню навигации сайта
+        if (!doc.head.querySelector('style[data-tm-hide]')) {
+            const st = doc.createElement('style');
+            st.setAttribute('data-tm-hide', '1');
+            st.textContent = 'nav.navbar,.navbar,.navbar-header,.navbar-right,#NavbarRight,ul.nav{display:none !important;} body{padding-top:0 !important;margin-top:0 !important;}';
+            doc.head.appendChild(st);
+        }
+
+        // фиксируем шапку заказа (V2 hero) сверху
+        const hero = doc.querySelector('header.hero');
+        if (hero && !hero.dataset.tmPinned) {
+            hero.dataset.tmPinned = '1';
+            hero.style.position = 'fixed';
+            hero.style.top = '0';
+            hero.style.left = '0';
+            hero.style.right = '0';
+            hero.style.zIndex = '60';
+            const bg = win.getComputedStyle(hero).backgroundColor;
+            if (!bg || bg === 'transparent' || bg === 'rgba(0, 0, 0, 0)') {
+                hero.style.backgroundColor = '#ececec';   // непрозрачная, чтобы контент не просвечивал
+            }
+            const push = () => {
+                const h = hero.offsetHeight;
+                const main = hero.parentElement;
+                if (main) main.style.paddingTop = h + 'px';   // контент не прячется под шапкой
+            };
+            push();
+            win.addEventListener('resize', push);
+            setTimeout(push, 500);
+            setTimeout(push, 1500);
+        }
+    }
+
     function openOrderModal(productId) {
         closeOrderModal();   // если открыта предыдущая — закрываем
 
@@ -1554,7 +1593,7 @@ async function checkOrderSections(orderId, orderNum) {
         overlay.appendChild(box);
         overlay.addEventListener('click', e => { if (e.target === overlay) closeOrderModal(); });
         document.body.appendChild(overlay);
-        orderEl = { overlay: overlay, frame: frame, productId: productId };
+        orderEl = { overlay: overlay, frame: frame, productId: productId, pinIv: null };
 
         frame.addEventListener('load', () => {
             let tries = 0;
@@ -1565,18 +1604,14 @@ async function checkOrderSections(orderId, orderNum) {
                     const doc = frame.contentDocument;
                     if (!win || !doc || !doc.body) return;
 
-                    // прячем верхнее меню навигации сайта — оставляем только заказ
-                    if (!doc.head.querySelector('style[data-tm-hide]')) {
-                        const st = doc.createElement('style');
-                        st.setAttribute('data-tm-hide', '1');
-                        st.textContent = 'nav.navbar,.navbar,.navbar-header,.navbar-right,#NavbarRight,ul.nav{display:none !important;} body{padding-top:0 !important;margin-top:0 !important;}';
-                        doc.head.appendChild(st);
-                    }
-
-                    // открываем заказ во вкладке постпечати, как в оригинале
                     if (typeof win.ShowPostpressForm === 'function') {
                         clearInterval(iv);
                         try { win.ShowPostpressForm(productId, 'postpress'); } catch (e) {}
+                        // следим за шапкой: перерисовки формы (Обновить и т.п.) создают новый hero
+                        orderEl.pinIv = setInterval(() => {
+                            try { pinOrderChrome(frame); } catch (e) {}
+                        }, 1200);
+                        pinOrderChrome(frame);
                     } else if (tries > 40) {
                         clearInterval(iv);
                         LOG.warn('ORDER', 'ShowPostpressForm не появилась в iframe', productId);
@@ -1589,6 +1624,7 @@ async function checkOrderSections(orderId, orderNum) {
     function closeOrderModal() {
         if (!orderEl) return;
         const pid = orderEl.productId;
+        if (orderEl.pinIv) clearInterval(orderEl.pinIv);
         orderEl.overlay.remove();
         orderEl = null;
         refreshSingleRow(pid);   // обновим строку заказа после работы в форме
@@ -1601,14 +1637,6 @@ async function checkOrderSections(orderId, orderNum) {
         if (!row) return;
         loadReadinessForRows([row], left ? SHF_LEFT.value : SHF_RIGHT.value);
     }
-
-    function firstNumber(s) {
-        const t = String(s || '').replace(/\u00a0/g, ' ');
-        // число с тысячами ("1 720", "12 345") или обычное
-        const m = t.match(/\d+(?:\s\d{3})+(?!\d)|\d+/);
-        return m ? m[0].replace(/\s+/g, '') : '0';
-    }
-
     /* --- Парсинг операций (V1 + V2) --- */
     function parseOperations(doc, sectorFilter, isV2 = false) {
         if (isV2) {
