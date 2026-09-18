@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Laserhall Axiom
 // @namespace    https://laserhall.simprint.pro/
-// @version      54.8.0
+// @version      54.9.0
 // @description  
 // @match        https://laserhall.simprint.pro/axiom/index_postpress.php
 // @grant        none
@@ -868,6 +868,7 @@
                 { icon: '📐', label: 'Препресс', action: togglePrepressModal },
                 { icon: '🧮', label: 'Раскладка Oracal', action: () => window.open('https://www.creativepark.ru/orakal-641.html', '_blank', 'noopener') },
                 { icon: '📦', label: 'Склад', action: toggleStockModal },
+                { icon: '📊', label: 'Статистика', action: toggleStatsModal },
             ].forEach(mi => {
                 const d = document.createElement('div');
                 d.style.cssText = 'padding:6px 12px;cursor:pointer;font:13px Arial;border-radius:4px;display:flex;align-items:center;gap:8px;';
@@ -937,64 +938,15 @@
                 }, true);
             });
 
-            const footer = document.createElement('div');
-            footer.className = 'tm-shf-footer';
-            footer.style.cssText = 'padding:6px 14px;background:#f5f5f5;border-top:1px solid #ddd;font:13px Arial;color:#555;flex-shrink:0;';
-
-            const footerToggle = document.createElement('span');
-            footerToggle.style.cssText = 'cursor:pointer;color:#1565c0;font-weight:600;user-select:none;';
-            footerToggle.textContent = '▶ Показать статистику';
-
-            const footerStats = document.createElement('div');
-            footerStats.style.cssText = 'display:none;margin-top:6px;padding-top:6px;border-top:1px dashed #ccc;line-height:1.7;';
-
-            const statsRow = document.createElement('div');
-            statsRow.style.cssText = 'display:flex;align-items:flex-start;justify-content:space-between;gap:12px;';
-
-            const statsContent = document.createElement('div');
-            statsContent.style.cssText = 'flex:1 1 auto;';
-
-            const statsBadge = document.createElement('span');
-            statsBadge.className = 'tm-stats-sync-badge';
-            statsBadge.title = 'Статус синхронизации общей статистики (клик — синхронизировать сейчас)';
-            statsBadge.style.cssText = 'font:12px Arial;color:#555;white-space:nowrap;flex:0 0 auto;cursor:pointer;padding-top:3px;';
-            statsBadge.addEventListener('click', () => statsSync('кнопка в футере'));
-
-            statsRow.appendChild(statsContent);
-            statsRow.appendChild(statsBadge);
-            footerStats.appendChild(statsRow);
-
-            footerToggle.addEventListener('click', () => {
-                const isOpen = footerStats.style.display !== 'none';
-                footerStats.style.display = isOpen ? 'none' : 'block';
-                footerToggle.textContent = isOpen ? '▶ Показать статистику' : '▼ Скрыть статистику';
-            });
-
-            const footerSave = document.createElement('span');
-            footerSave.style.cssText = 'cursor:pointer;color:#555;user-select:none;margin-left:14px;font-size:18px;line-height:1;padding:2px 4px;border-radius:4px;';
-            footerSave.textContent = '💾';
-            footerSave.title = 'Сохранить отчёт';
-            footerSave.addEventListener('mouseenter', () => { footerSave.style.background = '#e3f2fd'; footerSave.style.color = '#1565c0'; });
-            footerSave.addEventListener('mouseleave', () => { footerSave.style.background = 'transparent'; footerSave.style.color = '#555'; });
-            footerSave.addEventListener('click', () => {
-                const base = statsShared || loadStatsCache();
-                if (!base || !exportStatsReport(base)) alert('Пока нет данных для отчёта');
-            });
-
-            footer.appendChild(footerToggle);
-            footer.appendChild(footerSave);
-            footer.appendChild(footerStats);
-
             b.appendChild(h);
             b.appendChild(body);
-            b.appendChild(footer);
             b.appendChild(burgerMenu);
             o.appendChild(b);
 
             o.addEventListener('click', e => { if (e.target === o) closeUnifiedModal(); });
             document.body.appendChild(o);
 
-            unifiedEl = { overlay: o, mainBox: b, left: leftCol, right: rightCol, footer: footer, footerStats: footerStats, footerStatsContent: statsContent };
+            unifiedEl = { overlay: o, mainBox: b, left: leftCol, right: rightCol };
         } else {
             unifiedEl.overlay.style.display = 'flex';
         }
@@ -1006,8 +958,6 @@
         if (cacheShfLeft) renderShfColumn(unifiedEl.left, SHF_LEFT.title, cacheShfLeft, SHF_LEFT.value);
         if (cacheShfRight) renderShfColumn(unifiedEl.right, SHF_RIGHT.title, cacheShfRight, SHF_RIGHT.value);
 
-        updateStatsSyncBadge();
-        updateFooter();
         statsSync('открытие модалки');
 
         if (isCacheFresh()) {
@@ -2411,23 +2361,7 @@ async function checkOrderSections(orderId, orderNum) {
     }
 
     function updateFooter() {
-        if (!unifiedEl || !unifiedEl.footerStatsContent) return;
-
-        const parts = [`Сделанные заказы: <b style="color:#2e7d32;">${statsTodayCount()}</b>`];
-
-        const matEntries = Object.entries(statsMaterialsTotals()).filter(([_, c]) => c > 0).sort((a, b) => b[1] - a[1]);
-        if (matEntries.length > 0) {
-            parts.push('<b>Материалы:</b> ' + matEntries.map(([n, c]) => `${n}: <b>${c}</b>`).join(' &nbsp;|&nbsp; '));
-        }
-        const prodEntries = Object.entries(statsProductsTotals()).filter(([_, c]) => c > 0).sort((a, b) => b[1] - a[1]);
-        if (prodEntries.length > 0) {
-            parts.push('<b>Изделия:</b> ' + prodEntries.map(([n, c]) => `${n}: <b>${c}</b>`).join(' &nbsp;|&nbsp; '));
-        }
-        if (!matEntries.length && !prodEntries.length) {
-            parts.push('<span style="color:#999;">Материалы и изделия за неделю: пока нет данных</span>');
-        }
-
-        unifiedEl.footerStatsContent.innerHTML = parts.join(' &nbsp;&nbsp;•&nbsp;&nbsp; ');
+        renderStatsContent();   // статистика теперь живёт в отдельной модалке
     }
 
     function updateFooterCount() { updateFooter(); }
@@ -2681,6 +2615,115 @@ async function checkOrderSections(orderId, orderNum) {
             downloadReport(buildReportText(JSON.parse(raw)), `SHF_otchet_legacy_${todayStr()}.txt`);
         } catch (e) { alert('Ошибка: ' + e.message); }
     };
+
+    /* ===== МОДАЛКА СТАТИСТИКИ ===== */
+    let statsEl = null;
+    let statsOpen = false;
+    let statsContentEl = null;
+
+    function openStatsModal() {
+        if (!statsEl) {
+            const overlay = document.createElement('div');
+            overlay.className = 'tm-stats-overlay';
+            overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.35);z-index:100001;display:flex;align-items:center;justify-content:center;';
+
+            // 50% от основной модалки (96vw x 92vh), по центру экрана
+            const box = document.createElement('div');
+            box.style.cssText = 'background:#fff;width:48vw;height:46vh;border-radius:8px;display:flex;flex-direction:column;box-shadow:0 10px 40px rgba(0,0,0,.4);overflow:hidden;position:relative;';
+
+            const header = document.createElement('div');
+            header.style.cssText = 'padding:10px 14px;background:#f5f5f5;border-bottom:1px solid #ddd;display:flex;align-items:center;justify-content:space-between;font:600 15px Arial;flex-shrink:0;';
+
+            const hLeft = document.createElement('div');
+            hLeft.style.cssText = 'display:flex;align-items:center;gap:10px;';
+            const title = document.createElement('span');
+            title.textContent = 'Статистика участка ШФ';
+            const badge = document.createElement('span');
+            badge.className = 'tm-stats-sync-badge';
+            badge.title = 'Статус синхронизации (клик — синхронизировать сейчас)';
+            badge.style.cssText = 'font:12px Arial;color:#555;cursor:pointer;';
+            badge.addEventListener('click', () => statsSync('клик по бейджу'));
+            hLeft.appendChild(title);
+            hLeft.appendChild(badge);
+
+            const hRight = document.createElement('div');
+            hRight.style.cssText = 'display:flex;gap:8px;align-items:center;';
+
+            const saveBtn = document.createElement('button');
+            saveBtn.textContent = '💾';
+            saveBtn.title = 'Сохранить отчёт';
+            saveBtn.style.cssText = 'border:none;background:transparent;color:#555;cursor:pointer;font-size:18px;line-height:1;padding:4px 6px;border-radius:4px;';
+            saveBtn.addEventListener('mouseenter', () => { saveBtn.style.background = '#e3f2fd'; saveBtn.style.color = '#1565c0'; });
+            saveBtn.addEventListener('mouseleave', () => { saveBtn.style.background = 'transparent'; saveBtn.style.color = '#555'; });
+            saveBtn.addEventListener('click', () => {
+                const base = statsShared || loadStatsCache();
+                if (!base || !exportStatsReport(base)) alert('Пока нет данных для отчёта');
+            });
+
+            const closeBtn = document.createElement('button');
+            closeBtn.textContent = '✕';
+            closeBtn.title = 'Закрыть';
+            closeBtn.style.cssText = 'border:none;background:transparent;color:#e53935;width:28px;height:28px;border-radius:4px;cursor:pointer;font-size:18px;line-height:1;padding:0;';
+            closeBtn.addEventListener('mouseenter', () => { closeBtn.style.background = '#ffebee'; });
+            closeBtn.addEventListener('mouseleave', () => { closeBtn.style.background = 'transparent'; });
+            closeBtn.addEventListener('click', closeStatsModal);
+
+            hRight.appendChild(saveBtn);
+            hRight.appendChild(closeBtn);
+            header.appendChild(hLeft);
+            header.appendChild(hRight);
+
+            const body = document.createElement('div');
+            body.style.cssText = 'flex:1;overflow-y:auto;padding:14px 16px;font:13px Arial;color:#333;';
+            statsContentEl = body;
+
+            box.appendChild(header);
+            box.appendChild(body);
+            overlay.appendChild(box);
+            overlay.addEventListener('click', e => { if (e.target === overlay) closeStatsModal(); });
+            document.body.appendChild(overlay);
+            statsEl = overlay;
+        } else {
+            statsEl.style.display = 'flex';
+        }
+        statsOpen = true;
+        renderStatsContent();
+        updateStatsSyncBadge();
+        statsSync('открытие модалки статистики');
+    }
+
+    function closeStatsModal() {
+        if (statsEl) statsEl.style.display = 'none';
+        statsOpen = false;
+    }
+
+    function toggleStatsModal() {
+        statsOpen ? closeStatsModal() : openStatsModal();
+    }
+
+    function renderStatsContent() {
+        if (!statsContentEl) return;
+        const base = statsShared || loadStatsCache();
+        const week = base ? base.weekStart : getWeekStart();
+        const today = statsTodayCount();
+        const mats = Object.entries(statsMaterialsTotals()).filter(([_, c]) => c > 0).sort((a, b) => b[1] - a[1]);
+        const prods = Object.entries(statsProductsTotals()).filter(([_, c]) => c > 0).sort((a, b) => b[1] - a[1]);
+
+        let html = '';
+        html += `<div style="display:flex;align-items:baseline;gap:10px;margin-bottom:12px;">
+            <span style="font:600 14px Arial;color:#37474f;">Сделанные заказы за сегодня:</span>
+            <span style="font:700 24px Arial;color:#2e7d32;">${today}</span>
+        </div>`;
+        html += `<div style="font:600 13px Arial;color:#37474f;margin-bottom:8px;">Неделя ${formatDateRu(week)} – ${formatDateRu(getWeekEndIso(week))}</div>`;
+        html += `<div style="margin-bottom:12px;"><div style="font:600 13px Arial;color:#555;margin-bottom:4px;">Материалы:</div>`;
+        html += mats.length ? mats.map(([n, c]) => `<div style="padding:2px 0;">• ${escapeHtml(n)}: <b>${c}</b></div>`).join('') : '<div style="color:#999;">нет данных</div>';
+        html += `</div>`;
+        html += `<div><div style="font:600 13px Arial;color:#555;margin-bottom:4px;">Изделия:</div>`;
+        html += prods.length ? prods.map(([n, c]) => `<div style="padding:2px 0;">• ${escapeHtml(n)}: <b>${c}</b></div>`).join('') : '<div style="color:#999;">нет данных</div>';
+        html += `</div>`;
+
+        statsContentEl.innerHTML = html;
+    }
 
     /* ===== СТАРТ ===== */
 
