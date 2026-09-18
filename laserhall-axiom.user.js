@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Laserhall Axiom
 // @namespace    https://laserhall.simprint.pro/
-// @version      54.7.0
+// @version      54.8.0
 // @description  
 // @match        https://laserhall.simprint.pro/axiom/index_postpress.php
 // @grant        none
@@ -863,15 +863,21 @@
             burgerBtn.addEventListener('mouseleave', () => { burgerBtn.style.background = 'transparent'; burgerBtn.style.color = '#555'; });
 
             const burgerMenu = document.createElement('div');
-            burgerMenu.style.cssText = 'display:none;position:absolute;top:46px;right:50px;background:#fff;border:1px solid #bbb;border-radius:6px;box-shadow:0 6px 18px rgba(0,0,0,.25);padding:6px;z-index:20;min-width:180px;';
+            burgerMenu.style.cssText = 'display:none;position:absolute;top:46px;left:14px;background:#fff;border:1px solid #bbb;border-radius:6px;box-shadow:0 6px 18px rgba(0,0,0,.25);padding:6px;z-index:20;min-width:200px;';
             [
-                { label: 'Препресс', action: togglePrepressModal },
-                { label: 'Раскладка Oracal', action: () => window.open('https://www.creativepark.ru/orakal-641.html', '_blank', 'noopener') },
-                { label: 'Склад', action: toggleStockModal },
+                { icon: '📐', label: 'Препресс', action: togglePrepressModal },
+                { icon: '🧮', label: 'Раскладка Oracal', action: () => window.open('https://www.creativepark.ru/orakal-641.html', '_blank', 'noopener') },
+                { icon: '📦', label: 'Склад', action: toggleStockModal },
             ].forEach(mi => {
                 const d = document.createElement('div');
-                d.textContent = mi.label;
-                d.style.cssText = 'padding:6px 12px;cursor:pointer;font:13px Arial;border-radius:4px;';
+                d.style.cssText = 'padding:6px 12px;cursor:pointer;font:13px Arial;border-radius:4px;display:flex;align-items:center;gap:8px;';
+                const ic = document.createElement('span');
+                ic.textContent = mi.icon;
+                ic.style.cssText = 'font-size:15px;line-height:1;flex:0 0 auto;';
+                const lb = document.createElement('span');
+                lb.textContent = mi.label;
+                d.appendChild(ic);
+                d.appendChild(lb);
                 d.addEventListener('mouseenter', () => d.style.background = '#e3f2fd');
                 d.addEventListener('mouseleave', () => d.style.background = 'transparent');
                 d.addEventListener('click', () => { burgerMenu.style.display = 'none'; mi.action(); });
@@ -896,9 +902,14 @@
             cl.addEventListener('mouseleave', () => { cl.style.background = 'transparent'; });
             cl.addEventListener('click', closeUnifiedModal);
 
-            r.appendChild(burgerBtn);
             r.appendChild(cl);
-            h.appendChild(ti);
+
+            const hLeft = document.createElement('div');
+            hLeft.style.cssText = 'display:flex;gap:10px;align-items:center;';
+            hLeft.appendChild(burgerBtn);
+            hLeft.appendChild(ti);
+
+            h.appendChild(hLeft);
             h.appendChild(r);
 
             const body = document.createElement('div');
