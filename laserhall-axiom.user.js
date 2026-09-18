@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Laserhall Axiom
 // @namespace    https://laserhall.simprint.pro/
-// @version      53.9.0
+// @version      53.9.1
 // @description  
 // @match        https://laserhall.simprint.pro/axiom/index_postpress.php
 // @grant        none
@@ -1434,9 +1434,13 @@ async function checkOrderSections(orderId, orderNum) {
 
                 if (idx === 0) {
                     const arrow = exp ? '▼' : '▶';
-                    const numHtml = `<div style="color:#1565c0;font-weight:600;text-align:center;display:inline-block;">${escapeHtml(r.displayNum)}</div>`;
-                    const stopHtml = r._isStopped ? `<div style="text-align:center;margin-top:2px;"><span title="Заказ на СТОПЕ" style="color:red;font-size:14px;">⛔</span></div>` : '';
-                    content = `<span class="tm-row-toggle" data-pid="${escapeHtml(r.productId)}" title="${exp ? 'Свернуть' : 'Развернуть'}" style="cursor:pointer;color:#607d8b;font-size:10px;user-select:none;margin-right:6px;vertical-align:middle;">${arrow}</span>` + numHtml + stopHtml;
+                    const stopHtml = r._isStopped ? `<span title="Заказ на СТОПЕ" style="color:red;font-size:14px;">⛔</span>` : '';
+                    content =
+                        `<div style="display:flex;align-items:center;gap:5px;white-space:nowrap;">` +
+                        `<span class="tm-row-toggle" data-pid="${escapeHtml(r.productId)}" title="${exp ? 'Свернуть' : 'Развернуть'}" style="cursor:pointer;color:#607d8b;font-size:11px;user-select:none;flex:0 0 auto;">${arrow}</span>` +
+                        `<span style="color:#1565c0;font-weight:600;">${escapeHtml(r.displayNum)}</span>` +
+                        stopHtml +
+                        `</div>`;
                 }
 
                 if (!exp) {
@@ -1979,9 +1983,13 @@ async function checkOrderSections(orderId, orderNum) {
                     if (matchTr.children[0]) {
                         const exp = rowIsExpanded(row.productId);
                         const arrow = exp ? '▼' : '▶';
-                        const numHtml = `<div style="color:#1565c0;font-weight:600;text-align:center;display:inline-block;">${escapeHtml(row.displayNum)}</div>`;
-                        const stopHtml = row._isStopped ? `<div style="text-align:center;margin-top:2px;"><span title="Заказ на СТОПЕ" style="color:red;font-size:14px;">⛔</span></div>` : '';
-                        matchTr.children[0].innerHTML = `<span class="tm-row-toggle" data-pid="${escapeHtml(row.productId)}" title="${exp ? 'Свернуть' : 'Развернуть'}" style="cursor:pointer;color:#607d8b;font-size:10px;user-select:none;margin-right:6px;vertical-align:middle;">${arrow}</span>` + numHtml + stopHtml;
+                        const stopHtml = row._isStopped ? `<span title="Заказ на СТОПЕ" style="color:red;font-size:14px;">⛔</span>` : '';
+                        matchTr.children[0].innerHTML =
+                            `<div style="display:flex;align-items:center;gap:5px;white-space:nowrap;">` +
+                            `<span class="tm-row-toggle" data-pid="${escapeHtml(row.productId)}" title="${exp ? 'Свернуть' : 'Развернуть'}" style="cursor:pointer;color:#607d8b;font-size:11px;user-select:none;flex:0 0 auto;">${arrow}</span>` +
+                            `<span style="color:#1565c0;font-weight:600;">${escapeHtml(row.displayNum)}</span>` +
+                            stopHtml +
+                            `</div>`;
                     }
                     if (matchTr.children[1] && row.cells[1]) matchTr.children[1].textContent = row.cells[1].text;
                     if (matchTr.children[2] && row.cells[2]) matchTr.children[2].textContent = row.cells[2].text;
