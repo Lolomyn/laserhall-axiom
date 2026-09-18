@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Laserhall Axiom
 // @namespace    https://laserhall.simprint.pro/
-// @version      54.2.0
+// @version      54.3.0
 // @description  
 // @match        https://laserhall.simprint.pro/axiom/index_postpress.php
 // @grant        none
@@ -1529,23 +1529,27 @@ async function checkOrderSections(orderId, orderNum) {
         const win = frame.contentWindow;
         if (!doc || !doc.body) return;
 
-        // прячем верхнее меню навигации сайта
+        // прячем верхнее меню навигации сайта + глушим sticky у шапки заказа
         if (!doc.head.querySelector('style[data-tm-hide]')) {
             const st = doc.createElement('style');
             st.setAttribute('data-tm-hide', '1');
-            st.textContent = 'nav.navbar,.navbar,.navbar-header,.navbar-right,#NavbarRight,ul.nav{display:none !important;} body{padding-top:0 !important;margin-top:0 !important;}';
+            st.textContent =
+                'nav.navbar,.navbar,.navbar-header,.navbar-right,#NavbarRight,ul.nav{display:none !important;}' +
+                'body{padding-top:0 !important;margin-top:0 !important;}' +
+                'header.hero{position:fixed !important;top:0 !important;left:0 !important;right:0 !important;z-index:60 !important;}';
             doc.head.appendChild(st);
         }
 
-        // фиксируем шапку заказа (V2 hero) сверху
         const hero = doc.querySelector('header.hero');
         if (hero && !hero.dataset.tmPinned) {
             hero.dataset.tmPinned = '1';
-            hero.style.position = 'fixed';
-            hero.style.top = '0';
-            hero.style.left = '0';
-            hero.style.right = '0';
-            hero.style.zIndex = '60';
+            // дублируем инлайном с !important — на случай, если стили сайта перепишут класс
+            hero.style.setProperty('position', 'fixed', 'important');
+            hero.style.setProperty('top', '0', 'important');
+            hero.style.setProperty('left', '0', 'important');
+            hero.style.setProperty('right', '0', 'important');
+            hero.style.setProperty('z-index', '60', 'important');
+
             const bg = win.getComputedStyle(hero).backgroundColor;
             if (!bg || bg === 'transparent' || bg === 'rgba(0, 0, 0, 0)') {
                 hero.style.backgroundColor = '#ececec';   // непрозрачная, чтобы контент не просвечивал
