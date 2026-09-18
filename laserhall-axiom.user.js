@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Laserhall Axiom
 // @namespace    https://laserhall.simprint.pro/
-// @version      53.12.0
+// @version      54.0.0
 // @description  
 // @match        https://laserhall.simprint.pro/axiom/index_postpress.php
 // @grant        none
@@ -1136,8 +1136,9 @@
     }
 
     function openPrepressOrder(productId, orderNum) {
-        LOG.info('OPEN', 'заказ из препресса', { id: productId, способ: 'ShowPostpressForm' });
-        closeUnifiedModal();
+        LOG.info('OPEN', 'заказ из препресса', { id: productId, способ: 'модалка поверх' });
+        openOrderModal(productId);
+        return;
         try {
             if (typeof window.ShowPostpressForm === 'function') {
                 window.ShowPostpressForm(productId, 'postpress');
@@ -1515,22 +1516,90 @@ async function checkOrderSections(orderId, orderNum) {
     }
 
     function openOrder(productId) {
-        LOG.info('OPEN', 'заказ из ШФ', { id: productId, способ: 'jQuery.post' });
-        closeUnifiedModal();
-        try {
-            if (window.jQuery) {
-                try { if (typeof window.ShowDocLoader === 'function') window.ShowDocLoader('Загружаем заказ…'); } catch (e) {}
-                var sector = 0;
-                try { sector = window.jQuery('#Sector').val() || 0; } catch (e) {}
-                window.jQuery.post('doc/Workflow/Product/Form.php', { id: productId, Sector: sector, ActiveTab: 'postpress', tab: 'postpress' }, function (msg) {
-                    window.jQuery('#Doc').html(msg);
-                    try { if (typeof window.HideDocLoader === 'function') window.HideDocLoader(); } catch (e) {}
-                });
-                return;
-            }
-        } catch (e) {}
-        LOG.info('OPEN', 'заказ из ШФ', { id: productId, способ: 'URL' });
-        window.location.href = ORDER_URL_TPL.replace('{v}', encodeURIComponent(productId));
+        LOG.info('OPEN', 'заказ из ШФ', { id: productId, способ: 'модалка поверх' });
+        openOrderModal(productId);
+    }
+
+    /* ===== МОДАЛКА ЗАКАЗА (поверх основной) ===== */
+    let orderEl = null;
+
+    function openOrderModal(productId) {
+        closeOrderModal();   // если открыта предыдущая — закрываем
+
+        const overlay = document.createElement('div');
+        overlay.className = 'tm-order-overlay';
+        overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.25);z-index:100002;';
+
+        // 85% от основной модалки (96vw x 92vh), смещена вправо, но не к краю
+        const box = document.createElement('div');
+        box.style.cssText = 'position:fixed;top:11vh;right:4vw;width:81.6vw;height:78.2vh;background:#fff;border-radius:8px;display:flex;flex-direction:column;box-shadow:0 10px 40px rgba(0,0,0,.5);overflow:hidden;';
+
+        const hdr = document.createElement('div');
+        hdr.style.cssText = 'padding:8px 14px;background:#f5f5f5;border-bottom:1px solid #ddd;display:flex;align-items:center;justify-content:space-between;font:600 14px Arial;flex-shrink:0;';
+        const t = document.createElement('span');
+        t.textContent = 'Заказ ' + productId;
+        const cl = document.createElement('button');
+        cl.textContent = '✕';
+        cl.style.cssText = 'border:none;background:#e53935;color:#fff;width:26px;height:26px;border-radius:4px;cursor:pointer;font-size:14px;';
+        cl.addEventListener('click', () => closeOrderModal());
+        hdr.appendChild(t);
+        hdr.appendChild(cl);
+
+        const frame = document.createElement('iframe');
+        frame.style.cssText = 'flex:1;width:100%;border:0;background:#fff;';
+        frame.src = SHF_PAGE_URL;
+
+        box.appendChild(hdr);
+        box.appendChild(frame);
+        overlay.appendChild(box);
+        overlay.addEventListener('click', e => { if (e.target === overlay) closeOrderModal(); });
+        document.body.appendChild(overlay);
+        orderEl = { overlay: overlay, frame: frame, productId: productId };
+
+        frame.addEventListener('load', () => {
+            let tries = 0;
+            const iv = setInterval(() => {
+                tries++;
+                try {
+                    const win = frame.contentWindow;
+                    const doc = frame.contentDocument;
+                    if (!win || !doc || !doc.body) return;
+
+                    // прячем верхнее меню навигации сайта — оставляем только заказ
+                    if (!doc.head.querySelector('style[data-tm-hide]')) {
+                        const st = doc.createElement('style');
+                        st.setAttribute('data-tm-hide', '1');
+                        st.textContent = 'nav.navbar,.navbar,.navbar-header,.navbar-right,#NavbarRight,ul.nav{display:none !important;} body{padding-top:0 !important;margin-top:0 !important;}';
+                        doc.head.appendChild(st);
+                    }
+
+                    // открываем заказ во вкладке постпечати, как в оригинале
+                    if (typeof win.ShowPostpressForm === 'function') {
+                        clearInterval(iv);
+                        try { win.ShowPostpressForm(productId, 'postpress'); } catch (e) {}
+                    } else if (tries > 40) {
+                        clearInterval(iv);
+                        LOG.warn('ORDER', 'ShowPostpressForm не появилась в iframe', productId);
+                    }
+                } catch (e) {}
+            }, 300);
+        });
+    }
+
+    function closeOrderModal() {
+        if (!orderEl) return;
+        const pid = orderEl.productId;
+        orderEl.overlay.remove();
+        orderEl = null;
+        refreshSingleRow(pid);   // обновим строку заказа после работы в форме
+    }
+
+    function refreshSingleRow(pid) {
+        const left = (cacheShfLeft || []).find(r => r.productId === pid);
+        const right = (cacheShfRight || []).find(r => r.productId === pid);
+        const row = left || right;
+        if (!row) return;
+        loadReadinessForRows([row], left ? SHF_LEFT.value : SHF_RIGHT.value);
     }
 
     function firstNumber(s) {
