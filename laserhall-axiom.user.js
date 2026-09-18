@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Laserhall Axiom
 // @namespace    https://laserhall.simprint.pro/
-// @version      54.4.0
+// @version      54.5.0
 // @description  
 // @match        https://laserhall.simprint.pro/axiom/index_postpress.php
 // @grant        none
@@ -713,35 +713,12 @@
             closeBtn.addEventListener('click', closeStockModal);
 
             const saveBtn = document.createElement('button');
-            saveBtn.textContent = '💾 Сохранить в файл';
-            saveBtn.title = 'Скачать текущие значения склада (.txt или .xlsx)';
-            saveBtn.style.cssText = 'border:1px solid #2e7d32;background:#e8f5e9;color:#2e7d32;border-radius:4px;padding:4px 10px;cursor:pointer;font:600 13px Arial;';
-
-            const saveMenu = document.createElement('div');
-            saveMenu.style.cssText = 'display:none;position:absolute;top:48px;right:14px;background:#fff;border:1px solid #bbb;border-radius:6px;box-shadow:0 6px 18px rgba(0,0,0,.25);padding:6px;z-index:10;min-width:170px;';
-            saveMenu.innerHTML = `
-                <div data-fmt="txt"  style="padding:6px 12px;cursor:pointer;font:13px Arial;border-radius:4px;">📄 Сохранить в .txt</div>
-                <div data-fmt="xlsx" style="padding:6px 12px;cursor:pointer;font:13px Arial;border-radius:4px;">📊 Сохранить в .xlsx</div>
-            `;
-            saveMenu.querySelectorAll('div[data-fmt]').forEach(d => {
-                d.addEventListener('mouseenter', () => d.style.background = '#e3f2fd');
-                d.addEventListener('mouseleave', () => d.style.background = 'transparent');
-                d.addEventListener('click', () => {
-                    saveMenu.style.display = 'none';
-                    if (d.dataset.fmt === 'txt') saveStockToFile();
-                    else saveStockAsXlsx();
-                });
-            });
-
-            saveBtn.addEventListener('click', (e) => {
-                e.stopPropagation();
-                saveMenu.style.display = (saveMenu.style.display === 'none') ? 'block' : 'none';
-            });
-            document.addEventListener('click', (e) => {
-                if (saveMenu.style.display !== 'none' && !saveMenu.contains(e.target) && e.target !== saveBtn) {
-                    saveMenu.style.display = 'none';
-                }
-            });
+            saveBtn.textContent = '💾';
+            saveBtn.title = 'Сохранить склад в .txt';
+            saveBtn.style.cssText = 'border:none;background:transparent;color:#555;cursor:pointer;font-size:18px;line-height:1;padding:4px 6px;border-radius:4px;';
+            saveBtn.addEventListener('mouseenter', () => { saveBtn.style.background = '#e3f2fd'; saveBtn.style.color = '#1565c0'; });
+            saveBtn.addEventListener('mouseleave', () => { saveBtn.style.background = 'transparent'; saveBtn.style.color = '#555'; });
+            saveBtn.addEventListener('click', saveStockToFile);
 
             const hRight = document.createElement('div');
             hRight.style.cssText = 'display:flex;gap:8px;align-items:center;';
@@ -838,7 +815,6 @@
 
             modal.appendChild(header);
             modal.appendChild(body);
-            modal.appendChild(saveMenu);
             overlay.appendChild(modal);
 
             overlay.addEventListener('click', e => { if (e.target === overlay) closeStockModal(); });
@@ -984,9 +960,11 @@
             });
 
             const footerSave = document.createElement('span');
-            footerSave.style.cssText = 'cursor:pointer;color:#2e7d32;font-weight:600;user-select:none;margin-left:14px;';
-            footerSave.textContent = '💾 Сохранить отчёт';
-            footerSave.title = 'Скачать статистику текущей недели файлом (без сброса)';
+            footerSave.style.cssText = 'cursor:pointer;color:#555;user-select:none;margin-left:14px;font-size:18px;line-height:1;padding:2px 4px;border-radius:4px;';
+            footerSave.textContent = '💾';
+            footerSave.title = 'Сохранить отчёт';
+            footerSave.addEventListener('mouseenter', () => { footerSave.style.background = '#e3f2fd'; footerSave.style.color = '#1565c0'; });
+            footerSave.addEventListener('mouseleave', () => { footerSave.style.background = 'transparent'; footerSave.style.color = '#555'; });
             footerSave.addEventListener('click', () => {
                 const base = statsShared || loadStatsCache();
                 if (!base || !exportStatsReport(base)) alert('Пока нет данных для отчёта');
