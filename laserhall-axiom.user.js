@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Laserhall Axiom
 // @namespace    https://laserhall.simprint.pro/
-// @version      53.9.1
+// @version      53.10.0
 // @description  
 // @match        https://laserhall.simprint.pro/axiom/index_postpress.php
 // @grant        none
@@ -32,7 +32,7 @@
     const SHF_LEFT = { label: '1 / ШФ', title: '1 / ШФ', value: '5' };
     const SHF_RIGHT = { label: '14 / ШФ постпечать', title: '14 / ШФ постпечать', value: '86' };
 
-    const COL_HEADERS_SHF = ['№', 'Название', 'Клиент', 'Описание', 'Кол-во', 'Готовность'];
+    const COL_HEADERS_SHF = ['', '№', 'Название', 'Клиент', 'Описание', 'Кол-во', 'Готовность'];
     const PREPRESS_COL_HEADERS = ['№', 'Клиент', 'Название', 'Менеджер'];
 
     const AUTO_REFRESH_INTERVAL = 60000;
@@ -1389,15 +1389,19 @@ async function checkOrderSections(orderId, orderNum) {
         [SHF_LEFT.value, SHF_RIGHT.value].forEach(val => {
             document.querySelectorAll(`table.tm-shf-${val} tbody tr`).forEach(tr => {
                 if (tr.dataset.pid !== row.productId) return;
-                const arrow = tr.querySelector('.tm-row-toggle');
-                if (arrow) { arrow.textContent = exp ? '▼' : '▶'; arrow.title = exp ? 'Свернуть' : 'Развернуть'; }
 
-                resetCell(tr.children[1], '240px');
-                resetCell(tr.children[2], '160px');
-                if (!exp && tr.children[1]) tr.children[1].title = row.cells[1] ? row.cells[1].text : '';
-                if (!exp && tr.children[2]) tr.children[2].title = row.cells[2] ? row.cells[2].text : '';
+                const toggleTd = tr.children[0];
+                if (toggleTd) {
+                    toggleTd.innerHTML = `<span style="color:#455a64;font-size:13px;">${exp ? '▼' : '▶'}</span>`;
+                    toggleTd.title = exp ? 'Свернуть' : 'Развернуть';
+                }
 
-                const tdDesc = tr.children[3];
+                resetCell(tr.children[2], '240px');
+                resetCell(tr.children[3], '160px');
+                if (!exp && tr.children[2]) tr.children[2].title = row.cells[1] ? row.cells[1].text : '';
+                if (!exp && tr.children[3]) tr.children[3].title = row.cells[2] ? row.cells[2].text : '';
+
+                const tdDesc = tr.children[4];
                 if (tdDesc) {
                     if (exp) {
                         resetCell(tdDesc, '');
@@ -1420,10 +1424,14 @@ async function checkOrderSections(orderId, orderNum) {
             container.innerHTML = `<div style="padding:14px;font:600 14px Arial;background:#eceff1;position:sticky;top:0;z-index:2;">${escapeHtml(title)}</div><div style="padding:24px;font:14px Arial;color:#555;">Нет заказов.</div>`;
             return;
         }
-        const head = COL_HEADERS_SHF.map(h => `<th style="padding:8px 10px;text-align:left;border-bottom:2px solid #cfd8dc;background:#eceff1;position:sticky;top:0;z-index:2;font:600 15px Arial;white-space:nowrap;">${escapeHtml(h)}</th>`).join('');
+        const head = COL_HEADERS_SHF.map(h => `<th style="padding:8px 10px;text-align:left;border-bottom:2px solid #cfd8dc;background:#eceff1;position:sticky;top:0;z-index:2;font:600 15px Arial;white-space:nowrap;${h === '' ? 'width:34px;min-width:34px;padding:8px 4px;' : ''}">${escapeHtml(h)}</th>`).join('');
 
         const body = rows.map((r, i) => {
             const exp = rowIsExpanded(r.productId);
+
+            // отдельная кликабельная колонка со стрелкой
+            const toggleTd = `<td class="tm-row-toggle" data-pid="${escapeHtml(r.productId)}" title="${exp ? 'Свернуть' : 'Развернуть'}" style="padding:7px 4px;width:34px;min-width:34px;text-align:center;cursor:pointer;user-select:none;border-bottom:1px solid #eee;border-right:none;"><span style="color:#455a64;font-size:13px;">${exp ? '▼' : '▶'}</span></td>`;
+
             const tds = r.cells.map((c, idx) => {
                 const right = c.alignRight ? 'text-align:right;' : '';
                 const bold = /bold/.test(c.cls) ? 'font-weight:700;' : '';
@@ -1433,14 +1441,9 @@ async function checkOrderSections(orderId, orderNum) {
                 const fontSize = idx === 3 ? 'font-size:13px;line-height:1.4;' : '';
 
                 if (idx === 0) {
-                    const arrow = exp ? '▼' : '▶';
-                    const stopHtml = r._isStopped ? `<span title="Заказ на СТОПЕ" style="color:red;font-size:14px;">⛔</span>` : '';
-                    content =
-                        `<div style="display:flex;align-items:center;gap:5px;white-space:nowrap;">` +
-                        `<span class="tm-row-toggle" data-pid="${escapeHtml(r.productId)}" title="${exp ? 'Свернуть' : 'Развернуть'}" style="cursor:pointer;color:#607d8b;font-size:11px;user-select:none;flex:0 0 auto;">${arrow}</span>` +
-                        `<span style="color:#1565c0;font-weight:600;">${escapeHtml(r.displayNum)}</span>` +
-                        stopHtml +
-                        `</div>`;
+                    const stopHtml = r._isStopped ? `<span title="Заказ на СТОПЕ" style="color:red;font-size:14px;margin-left:4px;">⛔</span>` : '';
+                    content = `<span style="color:#1565c0;font-weight:600;">${escapeHtml(r.displayNum)}</span>` + stopHtml;
+                    extra += 'border-left:none;white-space:nowrap;';   // без линии между стрелкой и номером
                 }
 
                 if (!exp) {
@@ -1464,7 +1467,7 @@ async function checkOrderSections(orderId, orderNum) {
                 rowBg = ROW_COLORS[r._status] || (i % 2 ? '#fafafa' : '#fff');
             }
 
-            return `<tr class="tm-shf-row" data-pid="${escapeHtml(r.productId)}" style="background:${rowBg};cursor:pointer;">${tds}</tr>`;
+            return `<tr class="tm-shf-row" data-pid="${escapeHtml(r.productId)}" style="background:${rowBg};cursor:pointer;">${toggleTd}${tds}</tr>`;
         }).join('');
 
         container.innerHTML = `<div style="padding:14px;font:600 15px Arial;background:#cfd8dc;position:sticky;top:0;z-index:3;border-bottom:2px solid #b0bec5;">${escapeHtml(title)} <span style="font-weight:400;color:#555;">(${rows.length})</span></div><table class="tm-shf-${sectorValue}" style="width:100%;border-collapse:collapse;font:15px Arial;"><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table>`;
@@ -1486,6 +1489,12 @@ async function checkOrderSections(orderId, orderNum) {
                 tr.style.background = bg;
             });
             tr.addEventListener('click', () => openOrder(tr.dataset.pid));
+        });
+
+        // подсветка колонки-стрелки при наведении
+        container.querySelectorAll('td.tm-row-toggle').forEach(td => {
+            td.addEventListener('mouseenter', () => { td.style.background = 'rgba(21,101,192,.10)'; });
+            td.addEventListener('mouseleave', () => { td.style.background = ''; });
         });
     }
 
@@ -1982,22 +1991,20 @@ async function checkOrderSections(orderId, orderNum) {
                 if (matchTr) {
                     if (matchTr.children[0]) {
                         const exp = rowIsExpanded(row.productId);
-                        const arrow = exp ? '▼' : '▶';
-                        const stopHtml = row._isStopped ? `<span title="Заказ на СТОПЕ" style="color:red;font-size:14px;">⛔</span>` : '';
-                        matchTr.children[0].innerHTML =
-                            `<div style="display:flex;align-items:center;gap:5px;white-space:nowrap;">` +
-                            `<span class="tm-row-toggle" data-pid="${escapeHtml(row.productId)}" title="${exp ? 'Свернуть' : 'Развернуть'}" style="cursor:pointer;color:#607d8b;font-size:11px;user-select:none;flex:0 0 auto;">${arrow}</span>` +
-                            `<span style="color:#1565c0;font-weight:600;">${escapeHtml(row.displayNum)}</span>` +
-                            stopHtml +
-                            `</div>`;
+                        matchTr.children[0].innerHTML = `<span style="color:#455a64;font-size:13px;">${exp ? '▼' : '▶'}</span>`;
+                        matchTr.children[0].title = exp ? 'Свернуть' : 'Развернуть';
                     }
-                    if (matchTr.children[1] && row.cells[1]) matchTr.children[1].textContent = row.cells[1].text;
-                    if (matchTr.children[2] && row.cells[2]) matchTr.children[2].textContent = row.cells[2].text;
-                    if (matchTr.children[3] && row.cells[3]) {
-                        if (rowIsExpanded(row.productId)) matchTr.children[3].innerHTML = row.cells[3].html || row.cells[3].text;
-                        else matchTr.children[3].textContent = descPlain(row.cells[3].html || row.cells[3].text) || '—';
+                    if (matchTr.children[1]) {
+                        const stopHtml = row._isStopped ? `<span title="Заказ на СТОПЕ" style="color:red;font-size:14px;margin-left:4px;">⛔</span>` : '';
+                        matchTr.children[1].innerHTML = `<span style="color:#1565c0;font-weight:600;">${escapeHtml(row.displayNum)}</span>` + stopHtml;
                     }
-                    if (matchTr.children[4] && row.cells[4]) matchTr.children[4].textContent = row.cells[4].text;
+                    if (matchTr.children[2] && row.cells[1]) matchTr.children[2].textContent = row.cells[1].text;
+                    if (matchTr.children[3] && row.cells[2]) matchTr.children[3].textContent = row.cells[2].text;
+                    if (matchTr.children[4] && row.cells[3]) {
+                        if (rowIsExpanded(row.productId)) matchTr.children[4].innerHTML = row.cells[3].html || row.cells[3].text;
+                        else matchTr.children[4].textContent = descPlain(row.cells[3].html || row.cells[3].text) || '—';
+                    }
+                    if (matchTr.children[5] && row.cells[4]) matchTr.children[5].textContent = row.cells[4].text;
                     const lastTd = matchTr.lastElementChild;
                     if (lastTd && row.cells[5]) lastTd.textContent = row.cells[5].text;
                     if (rowBg) matchTr.style.background = rowBg;
