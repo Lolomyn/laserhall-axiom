@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Laserhall Axiom
 // @namespace    https://laserhall.simprint.pro/
-// @version      54.5.1
+// @version      54.5.2
 // @description  
 // @match        https://laserhall.simprint.pro/axiom/index_postpress.php
 // @grant        none
@@ -2319,7 +2319,7 @@ async function checkOrderSections(orderId, orderNum) {
 
     /* ===== СЧЁТЧИК СДЕЛАННЫХ ЗАКАЗОВ ШФ ЗА ДЕНЬ ===== */
     const STATS_KEY = 'tmShfDoneStats';
-    const todayStr = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
+    // const todayStr = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
 
     function loadStats() {
         try { const raw = localStorage.getItem(STATS_KEY); if (raw) return JSON.parse(raw); } catch (e) {}
