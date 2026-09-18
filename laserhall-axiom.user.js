@@ -1864,12 +1864,12 @@ async function checkOrderSections(orderId, orderNum) {
                 });
             });
 
-            LOG.debug('READY', productId, {
-                версия: isV2 ? 'V2' : 'V1',
-                status, isPacked: st.isPacked, isStopped: st.isStopped, isPostpressReady: st.isPostpressReady,
-                qty: qtyNum, материалов: materials.length, изделий: products.length,
-                клиент: cm.client || '—'
-            });
+            // LOG.debug('READY', productId, {
+            //     версия: isV2 ? 'V2' : 'V1',
+            //     status, isPacked: st.isPacked, isStopped: st.isStopped, isPostpressReady: st.isPostpressReady,
+            //     qty: qtyNum, материалов: materials.length, изделий: products.length,
+            //     клиент: cm.client || '—'
+            // });
 
             return { text, status, title: orderTitle, tirazh, qty: qtyNum, description, isStopped: st.isStopped, isPacked: st.isPacked, isPostpressReady: st.isPostpressReady, materials, products, client: clientParsed };
         } catch (e) {
