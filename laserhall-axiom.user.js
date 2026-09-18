@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Laserhall Axiom
 // @namespace    https://laserhall.simprint.pro/
-// @version      53.11.0
+// @version      53.12.0
 // @description  
 // @match        https://laserhall.simprint.pro/axiom/index_postpress.php
 // @grant        none
@@ -1533,6 +1533,13 @@ async function checkOrderSections(orderId, orderNum) {
         window.location.href = ORDER_URL_TPL.replace('{v}', encodeURIComponent(productId));
     }
 
+    function firstNumber(s) {
+        const t = String(s || '').replace(/\u00a0/g, ' ');
+        // число с тысячами ("1 720", "12 345") или обычное
+        const m = t.match(/\d+(?:\s\d{3})+(?!\d)|\d+/);
+        return m ? m[0].replace(/\s+/g, '') : '0';
+    }
+
     /* --- Парсинг операций (V1 + V2) --- */
     function parseOperations(doc, sectorFilter, isV2 = false) {
         if (isV2) {
@@ -1566,15 +1573,19 @@ async function checkOrderSections(orderId, orderNum) {
 
                     const qtyEl = opArt.querySelector('.pfv2-postpress-operation__metric.is-quantity strong');
                     const doneEl = opArt.querySelector('.pfv2-postpress-operation__metric.is-done strong');
-                    let qtyTotal = qtyEl ? (qtyEl.textContent.trim().match(/\d+/) || ['0'])[0] : '0';
-                    let qtyDone = doneEl ? (doneEl.textContent.trim().match(/\d+/) || ['0'])[0] : '0';
+                    let qtyTotal = qtyEl ? firstNumber(qtyEl.textContent) : '0';
+                    let qtyDone = doneEl ? firstNumber(doneEl.textContent) : '0';
 
                     // У завершённых свёрнутых операций метрик нет — берём из summary "Готово X из Y экз."
                     if (isComplete) {
                         const sumStrong = opArt.querySelector('.pfv2-postpress-operation__summary strong');
                         if (sumStrong) {
-                            const sm = sumStrong.textContent.match(/(\d+)\s+из\s+(\d+)/);
-                            if (sm) { qtyDone = sm[1]; qtyTotal = sm[2]; }
+                            const NUM = '(?:\\d+(?:\\s\\d{3})+(?!\\d)|\\d+)';
+                            const sm = sumStrong.textContent.match(new RegExp('(' + NUM + ')\\s+из\\s+(' + NUM + ')'));
+                            if (sm) {
+                                qtyDone = sm[1].replace(/\s+/g, '');
+                                qtyTotal = sm[2].replace(/\s+/g, '');
+                            }
                         }
                     }
 
@@ -1628,17 +1639,14 @@ async function checkOrderSections(orderId, orderNum) {
             let qtyTotal = '0', qtyDone = '0';
 
             if (infoValues.length >= 2) {
-                const totalMatch = infoValues[1].textContent.match(/(\d+)/);
-                if (totalMatch) qtyTotal = totalMatch[1];
+                qtyTotal = firstNumber(infoValues[1].textContent);
             }
 
             const progressEl = block.querySelector('[id^="progress_control_"]');
             if (progressEl) {
-                const doneMatch = progressEl.textContent.match(/(\d+)/);
-                if (doneMatch) qtyDone = doneMatch[1];
+                qtyDone = firstNumber(progressEl.textContent);
             } else if (infoValues.length >= 3) {
-                const doneMatch = infoValues[2].textContent.match(/(\d+)/);
-                if (doneMatch) qtyDone = doneMatch[1];
+                qtyDone = firstNumber(infoValues[2].textContent);
             }
 
             if (opText) {
