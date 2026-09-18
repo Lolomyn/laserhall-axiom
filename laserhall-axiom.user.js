@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Laserhall Axiom
 // @namespace    https://laserhall.simprint.pro/
-// @version      54.3.0
+// @version      54.4.0
 // @description  
 // @match        https://laserhall.simprint.pro/axiom/index_postpress.php
 // @grant        none
@@ -1523,47 +1523,19 @@ async function checkOrderSections(orderId, orderNum) {
     /* ===== МОДАЛКА ЗАКАЗА (поверх основной) ===== */
     let orderEl = null;
 
-    // Фиксация шапки заказа сверху + скрытие меню сайта (внутри iframe)
-    function pinOrderChrome(frame) {
+    // Оформление модалки заказа: прячем меню сайта и убираем sticky у шапки заказа (внутри iframe)
+    function injectOrderChrome(frame) {
         const doc = frame.contentDocument;
-        const win = frame.contentWindow;
-        if (!doc || !doc.body) return;
-
-        // прячем верхнее меню навигации сайта + глушим sticky у шапки заказа
-        if (!doc.head.querySelector('style[data-tm-hide]')) {
-            const st = doc.createElement('style');
-            st.setAttribute('data-tm-hide', '1');
-            st.textContent =
-                'nav.navbar,.navbar,.navbar-header,.navbar-right,#NavbarRight,ul.nav{display:none !important;}' +
-                'body{padding-top:0 !important;margin-top:0 !important;}' +
-                'header.hero{position:fixed !important;top:0 !important;left:0 !important;right:0 !important;z-index:60 !important;}';
-            doc.head.appendChild(st);
-        }
-
-        const hero = doc.querySelector('header.hero');
-        if (hero && !hero.dataset.tmPinned) {
-            hero.dataset.tmPinned = '1';
-            // дублируем инлайном с !important — на случай, если стили сайта перепишут класс
-            hero.style.setProperty('position', 'fixed', 'important');
-            hero.style.setProperty('top', '0', 'important');
-            hero.style.setProperty('left', '0', 'important');
-            hero.style.setProperty('right', '0', 'important');
-            hero.style.setProperty('z-index', '60', 'important');
-
-            const bg = win.getComputedStyle(hero).backgroundColor;
-            if (!bg || bg === 'transparent' || bg === 'rgba(0, 0, 0, 0)') {
-                hero.style.backgroundColor = '#ececec';   // непрозрачная, чтобы контент не просвечивал
-            }
-            const push = () => {
-                const h = hero.offsetHeight;
-                const main = hero.parentElement;
-                if (main) main.style.paddingTop = h + 'px';   // контент не прячется под шапкой
-            };
-            push();
-            win.addEventListener('resize', push);
-            setTimeout(push, 500);
-            setTimeout(push, 1500);
-        }
+        if (!doc || !doc.head) return;
+        if (doc.head.querySelector('style[data-tm-hide]')) return;   // уже внедрено
+        const st = doc.createElement('style');
+        st.setAttribute('data-tm-hide', '1');
+        st.textContent =
+            'nav.navbar,.navbar,.navbar-header,.navbar-right,#NavbarRight,ul.nav{display:none !important;}' +
+            'body{padding-top:0 !important;margin-top:0 !important;}' +
+            // глушим сайтовый sticky: шапка стоит в потоке, ничего не налезает
+            'header.hero{position:relative !important;top:auto !important;left:auto !important;right:auto !important;z-index:auto !important;}';
+        doc.head.appendChild(st);
     }
 
     function openOrderModal(productId) {
@@ -1608,14 +1580,11 @@ async function checkOrderSections(orderId, orderNum) {
                     const doc = frame.contentDocument;
                     if (!win || !doc || !doc.body) return;
 
+                    injectOrderChrome(frame);   // идемпотентно: меню скрыто, sticky у шапки убран
                     if (typeof win.ShowPostpressForm === 'function') {
                         clearInterval(iv);
                         try { win.ShowPostpressForm(productId, 'postpress'); } catch (e) {}
-                        // следим за шапкой: перерисовки формы (Обновить и т.п.) создают новый hero
-                        orderEl.pinIv = setInterval(() => {
-                            try { pinOrderChrome(frame); } catch (e) {}
-                        }, 1200);
-                        pinOrderChrome(frame);
+                        injectOrderChrome(frame);
                     } else if (tries > 40) {
                         clearInterval(iv);
                         LOG.warn('ORDER', 'ShowPostpressForm не появилась в iframe', productId);
@@ -1628,7 +1597,6 @@ async function checkOrderSections(orderId, orderNum) {
     function closeOrderModal() {
         if (!orderEl) return;
         const pid = orderEl.productId;
-        if (orderEl.pinIv) clearInterval(orderEl.pinIv);
         orderEl.overlay.remove();
         orderEl = null;
         refreshSingleRow(pid);   // обновим строку заказа после работы в форме
