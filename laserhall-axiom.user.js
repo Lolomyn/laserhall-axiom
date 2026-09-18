@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Laserhall Axiom
 // @namespace    https://laserhall.simprint.pro/
-// @version      54.6.0
+// @version      54.7.0
 // @description  
 // @match        https://laserhall.simprint.pro/axiom/index_postpress.php
 // @grant        none
@@ -854,29 +854,39 @@
             const r = document.createElement('div');
             r.style.cssText = 'display:flex;gap:8px;align-items:center;';
 
-            const ppBtn = document.createElement('button');
-            ppBtn.textContent = 'Препресс';
-            ppBtn.style.cssText = 'border:1px solid #1565c0;background:#e3f2fd;color:#1565c0;border-radius:4px;padding:4px 12px;cursor:pointer;font:600 13px Arial;';
-            ppBtn.addEventListener('click', togglePrepressModal);
+            // бургер с действиями (Препресс / Раскладка Oracal / Склад)
+            const burgerBtn = document.createElement('button');
+            burgerBtn.textContent = '☰';
+            burgerBtn.title = 'Действия';
+            burgerBtn.style.cssText = 'border:none;background:transparent;color:#555;width:28px;height:28px;border-radius:4px;cursor:pointer;font-size:18px;line-height:1;padding:0;';
+            burgerBtn.addEventListener('mouseenter', () => { burgerBtn.style.background = '#e3f2fd'; burgerBtn.style.color = '#1565c0'; });
+            burgerBtn.addEventListener('mouseleave', () => { burgerBtn.style.background = 'transparent'; burgerBtn.style.color = '#555'; });
 
-            // НОВАЯ КНОПКА: Раскладка Oracal
-            const oracalBtn = document.createElement('button');
-            oracalBtn.textContent = 'Раскладка Oracal';
-            oracalBtn.title = 'Открыть калькулятор раскладки плёнки Oracal 641';
-            oracalBtn.style.cssText = 'border:1px solid #388e3c;background:#e8f5e9;color:#2e7d32;border-radius:4px;padding:4px 12px;cursor:pointer;font:600 13px Arial;';
-            oracalBtn.addEventListener('mouseenter', () => oracalBtn.style.background = '#c8e6c9');
-            oracalBtn.addEventListener('mouseleave', () => oracalBtn.style.background = '#e8f5e9');
-            oracalBtn.addEventListener('click', () => {
-                window.open('https://www.creativepark.ru/orakal-641.html', '_blank', 'noopener');
+            const burgerMenu = document.createElement('div');
+            burgerMenu.style.cssText = 'display:none;position:absolute;top:46px;right:50px;background:#fff;border:1px solid #bbb;border-radius:6px;box-shadow:0 6px 18px rgba(0,0,0,.25);padding:6px;z-index:20;min-width:180px;';
+            [
+                { label: 'Препресс', action: togglePrepressModal },
+                { label: 'Раскладка Oracal', action: () => window.open('https://www.creativepark.ru/orakal-641.html', '_blank', 'noopener') },
+                { label: 'Склад', action: toggleStockModal },
+            ].forEach(mi => {
+                const d = document.createElement('div');
+                d.textContent = mi.label;
+                d.style.cssText = 'padding:6px 12px;cursor:pointer;font:13px Arial;border-radius:4px;';
+                d.addEventListener('mouseenter', () => d.style.background = '#e3f2fd');
+                d.addEventListener('mouseleave', () => d.style.background = 'transparent');
+                d.addEventListener('click', () => { burgerMenu.style.display = 'none'; mi.action(); });
+                burgerMenu.appendChild(d);
             });
 
-            const stockBtn = document.createElement('button');
-            stockBtn.textContent = 'Склад';
-            stockBtn.title = 'Открыть учёт склада материалов';
-            stockBtn.style.cssText = 'border:1px solid #7b1fa2;background:#f3e5f5;color:#6a1b9a;border-radius:4px;padding:4px 12px;cursor:pointer;font:600 13px Arial;';
-            stockBtn.addEventListener('mouseenter', () => stockBtn.style.background = '#e1bee7');
-            stockBtn.addEventListener('mouseleave', () => stockBtn.style.background = '#f3e5f5');
-            stockBtn.addEventListener('click', toggleStockModal);
+            burgerBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                burgerMenu.style.display = (burgerMenu.style.display === 'none') ? 'block' : 'none';
+            });
+            document.addEventListener('click', (e) => {
+                if (burgerMenu.style.display !== 'none' && !burgerMenu.contains(e.target) && e.target !== burgerBtn) {
+                    burgerMenu.style.display = 'none';
+                }
+            });
 
             const cl = document.createElement('button');
             cl.textContent = '✕';
@@ -886,9 +896,7 @@
             cl.addEventListener('mouseleave', () => { cl.style.background = 'transparent'; });
             cl.addEventListener('click', closeUnifiedModal);
 
-            r.appendChild(ppBtn);
-            r.appendChild(oracalBtn);
-            r.appendChild(stockBtn);
+            r.appendChild(burgerBtn);
             r.appendChild(cl);
             h.appendChild(ti);
             h.appendChild(r);
@@ -969,6 +977,7 @@
             b.appendChild(h);
             b.appendChild(body);
             b.appendChild(footer);
+            b.appendChild(burgerMenu);
             o.appendChild(b);
 
             o.addEventListener('click', e => { if (e.target === o) closeUnifiedModal(); });
