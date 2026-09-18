@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Laserhall Axiom
 // @namespace    https://laserhall.simprint.pro/
-// @version      53.8.3
+// @version      53.9.0
 // @description  
 // @match        https://laserhall.simprint.pro/axiom/index_postpress.php
 // @grant        none
@@ -943,6 +943,13 @@
             body.appendChild(sep1);
             body.appendChild(rightCol);
 
+            [leftCol, rightCol].forEach(col => {
+                col.addEventListener('click', e => {
+                    const t = (e.target && e.target.closest) ? e.target.closest('.tm-row-toggle') : null;
+                    if (t) { e.stopPropagation(); e.preventDefault(); toggleRowCollapse(t.getAttribute('data-pid')); }
+                }, true);
+            });
+
             const footer = document.createElement('div');
             footer.className = 'tm-shf-footer';
             footer.style.cssText = 'padding:6px 14px;background:#f5f5f5;border-top:1px solid #ddd;font:13px Arial;color:#555;flex-shrink:0;';
@@ -1347,6 +1354,66 @@ async function checkOrderSections(orderId, orderNum) {
         }
     }
 
+    /* --- сворачивание / разворачивание заказов --- */
+    const ROW_DEFAULT_EXPANDED = false;   // true — заказы по умолчанию развёрнуты
+    const rowToggled = new Set();         // заказы, у которых состояние переключено вручную
+
+    function rowIsExpanded(pid) {
+        return rowToggled.has(pid) ? !ROW_DEFAULT_EXPANDED : ROW_DEFAULT_EXPANDED;
+    }
+
+    function descPlain(html) {
+        const tmp = document.createElement('div');
+        tmp.innerHTML = String(html || '').replace(/<br\s*\/?>/gi, ' ').replace(/<\/div>/gi, ' · ');
+        return (tmp.textContent || '').replace(/\s+/g, ' ').trim();
+    }
+
+    function toggleRowCollapse(pid) {
+        if (rowToggled.has(pid)) rowToggled.delete(pid); else rowToggled.add(pid);
+        const row = [...(cacheShfLeft || []), ...(cacheShfRight || [])].find(r => r.productId === pid);
+        if (row) applyRowCollapseDom(row);
+    }
+
+    function applyRowCollapseDom(row) {
+        const exp = rowIsExpanded(row.productId);
+        const resetCell = (td, maxw) => {
+            if (!td) return;
+            if (exp) {
+                td.style.maxWidth = ''; td.style.width = ''; td.style.whiteSpace = '';
+                td.style.overflow = ''; td.style.textOverflow = ''; td.title = '';
+            } else {
+                td.style.maxWidth = maxw; td.style.whiteSpace = 'nowrap';
+                td.style.overflow = 'hidden'; td.style.textOverflow = 'ellipsis';
+            }
+        };
+        [SHF_LEFT.value, SHF_RIGHT.value].forEach(val => {
+            document.querySelectorAll(`table.tm-shf-${val} tbody tr`).forEach(tr => {
+                if (tr.dataset.pid !== row.productId) return;
+                const arrow = tr.querySelector('.tm-row-toggle');
+                if (arrow) { arrow.textContent = exp ? '▼' : '▶'; arrow.title = exp ? 'Свернуть' : 'Развернуть'; }
+
+                resetCell(tr.children[1], '240px');
+                resetCell(tr.children[2], '160px');
+                if (!exp && tr.children[1]) tr.children[1].title = row.cells[1] ? row.cells[1].text : '';
+                if (!exp && tr.children[2]) tr.children[2].title = row.cells[2] ? row.cells[2].text : '';
+
+                const tdDesc = tr.children[3];
+                if (tdDesc) {
+                    if (exp) {
+                        resetCell(tdDesc, '');
+                        tdDesc.innerHTML = row.cells[3].html || row.cells[3].text || '—';
+                    } else {
+                        resetCell(tdDesc, '0');
+                        tdDesc.style.width = '60%';
+                        const plain = descPlain(row.cells[3].html || row.cells[3].text);
+                        tdDesc.textContent = plain || '—';
+                        tdDesc.title = plain;
+                    }
+                }
+            });
+        });
+    }
+
     /* --- рендер ШФ --- */
     function renderShfColumn(container, title, rows, sectorValue) {
         if (!rows.length) {
@@ -1356,20 +1423,34 @@ async function checkOrderSections(orderId, orderNum) {
         const head = COL_HEADERS_SHF.map(h => `<th style="padding:8px 10px;text-align:left;border-bottom:2px solid #cfd8dc;background:#eceff1;position:sticky;top:0;z-index:2;font:600 15px Arial;white-space:nowrap;">${escapeHtml(h)}</th>`).join('');
 
         const body = rows.map((r, i) => {
+            const exp = rowIsExpanded(r.productId);
             const tds = r.cells.map((c, idx) => {
                 const right = c.alignRight ? 'text-align:right;' : '';
                 const bold = /bold/.test(c.cls) ? 'font-weight:700;' : '';
-                const content = c.html || escapeHtml(c.text);
+                let content = c.html || escapeHtml(c.text);
+                let extra = '';
+                let titleAttr = '';
                 const fontSize = idx === 3 ? 'font-size:13px;line-height:1.4;' : '';
 
-                let cellContent = content;
                 if (idx === 0) {
-                    const numHtml = `<div style="color:#1565c0;font-weight:600;text-align:center;">${escapeHtml(r.displayNum)}</div>`;
+                    const arrow = exp ? '▼' : '▶';
+                    const numHtml = `<div style="color:#1565c0;font-weight:600;text-align:center;display:inline-block;">${escapeHtml(r.displayNum)}</div>`;
                     const stopHtml = r._isStopped ? `<div style="text-align:center;margin-top:2px;"><span title="Заказ на СТОПЕ" style="color:red;font-size:14px;">⛔</span></div>` : '';
-                    cellContent = numHtml + stopHtml;
+                    content = `<span class="tm-row-toggle" data-pid="${escapeHtml(r.productId)}" title="${exp ? 'Свернуть' : 'Развернуть'}" style="cursor:pointer;color:#607d8b;font-size:10px;user-select:none;margin-right:6px;vertical-align:middle;">${arrow}</span>` + numHtml + stopHtml;
                 }
 
-                return `<td style="padding:7px 10px;border-bottom:1px solid #eee;${right}${bold}${fontSize}">${cellContent}</td>`;
+                if (!exp) {
+                    if (idx === 1) { extra += 'max-width:240px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;'; titleAttr = ` title="${escapeHtml(c.text)}"`; }
+                    if (idx === 2) { extra += 'max-width:160px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;'; titleAttr = ` title="${escapeHtml(c.text)}"`; }
+                    if (idx === 3) {
+                        const plain = descPlain(c.html || c.text);
+                        content = escapeHtml(plain);
+                        extra += 'max-width:0;width:60%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;';
+                        titleAttr = ` title="${escapeHtml(plain)}"`;
+                    }
+                }
+
+                return `<td style="padding:7px 10px;border-bottom:1px solid #eee;${right}${bold}${fontSize}${extra}"${titleAttr}>${content}</td>`;
             }).join('');
 
             let rowBg;
@@ -1896,13 +1977,18 @@ async function checkOrderSections(orderId, orderNum) {
 
                 if (matchTr) {
                     if (matchTr.children[0]) {
-                        const numHtml = `<div style="color:#1565c0;font-weight:600;text-align:center;">${escapeHtml(row.displayNum)}</div>`;
+                        const exp = rowIsExpanded(row.productId);
+                        const arrow = exp ? '▼' : '▶';
+                        const numHtml = `<div style="color:#1565c0;font-weight:600;text-align:center;display:inline-block;">${escapeHtml(row.displayNum)}</div>`;
                         const stopHtml = row._isStopped ? `<div style="text-align:center;margin-top:2px;"><span title="Заказ на СТОПЕ" style="color:red;font-size:14px;">⛔</span></div>` : '';
-                        matchTr.children[0].innerHTML = numHtml + stopHtml;
+                        matchTr.children[0].innerHTML = `<span class="tm-row-toggle" data-pid="${escapeHtml(row.productId)}" title="${exp ? 'Свернуть' : 'Развернуть'}" style="cursor:pointer;color:#607d8b;font-size:10px;user-select:none;margin-right:6px;vertical-align:middle;">${arrow}</span>` + numHtml + stopHtml;
                     }
                     if (matchTr.children[1] && row.cells[1]) matchTr.children[1].textContent = row.cells[1].text;
                     if (matchTr.children[2] && row.cells[2]) matchTr.children[2].textContent = row.cells[2].text;
-                    if (matchTr.children[3] && row.cells[3]) matchTr.children[3].innerHTML = row.cells[3].html || row.cells[3].text;
+                    if (matchTr.children[3] && row.cells[3]) {
+                        if (rowIsExpanded(row.productId)) matchTr.children[3].innerHTML = row.cells[3].html || row.cells[3].text;
+                        else matchTr.children[3].textContent = descPlain(row.cells[3].html || row.cells[3].text) || '—';
+                    }
                     if (matchTr.children[4] && row.cells[4]) matchTr.children[4].textContent = row.cells[4].text;
                     const lastTd = matchTr.lastElementChild;
                     if (lastTd && row.cells[5]) lastTd.textContent = row.cells[5].text;
