@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Laserhall Axiom
 // @namespace    https://laserhall.simprint.pro/
-// @version      55.0.0
+// @version      55.0.1
 // @description  
 // @match        https://laserhall.simprint.pro/axiom/index_postpress.php
 // @grant        none
@@ -2733,8 +2733,7 @@ async function checkOrderSections(orderId, orderNum) {
 
         const card = 'background:#fff;border:1px solid #e0e4e8;border-radius:8px;padding:12px 14px;box-shadow:0 1px 3px rgba(0,0,0,.06);';
         const secHead = (icon, text) => `<div style="display:flex;align-items:center;gap:7px;font:600 13px Arial;color:#37474f;letter-spacing:.3px;text-transform:uppercase;border-bottom:2px solid #cfd8dc;padding-bottom:5px;margin-bottom:8px;"><span style="font-size:15px;">${icon}</span><span>${text}</span></div>`;
-        const row = (icon, name, count, badge) => `<div style="display:flex;align-items:center;gap:8px;padding:4px 6px;">
-            <span style="font-size:14px;flex:0 0 auto;">${icon}</span>
+        const row = (name, count, badge) => `<div style="display:flex;align-items:center;gap:8px;padding:4px 6px;">
             <span style="flex:1 1 auto;font:13px Arial;color:#333;">${escapeHtml(name)}</span>
             <span style="flex:0 0 auto;font:700 12px Arial;padding:2px 9px;border-radius:10px;${badge}">${count}</span>
         </div>`;
@@ -2754,7 +2753,7 @@ async function checkOrderSections(orderId, orderNum) {
         // материалы
         html += `<div style="${card}margin-bottom:12px;">${secHead('🎞️', 'Материалы')}`;
         if (mats.length) {
-            html += mats.map(([n, c], i) => `<div style="${zebra(i)}border-radius:4px;">${row(materialIcon(n), n, c, 'background:#e8f5e9;color:#2e7d32;')}</div>`).join('');
+            html += mats.map(([n, c], i) => `<div style="${zebra(i)}border-radius:4px;">${row(n, c, 'background:#e8f5e9;color:#2e7d32;')}</div>`).join('');
         } else {
             html += `<div style="color:#999;font:13px Arial;padding:4px 6px;">нет данных</div>`;
         }
@@ -2763,7 +2762,7 @@ async function checkOrderSections(orderId, orderNum) {
         // изделия
         html += `<div style="${card}">${secHead('🏷️', 'Изделия')}`;
         if (prods.length) {
-            html += prods.map(([n, c], i) => `<div style="${zebra(i)}border-radius:4px;">${row(productIcon(n), n, c, 'background:#e3f2fd;color:#1565c0;')}</div>`).join('');
+            html += prods.map(([n, c], i) => `<div style="${zebra(i)}border-radius:4px;">${row(n, c, 'background:#e3f2fd;color:#1565c0;')}</div>`).join('');
         } else {
             html += `<div style="color:#999;font:13px Arial;padding:4px 6px;">нет данных</div>`;
         }
