@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Laserhall Axiom
 // @namespace    https://laserhall.simprint.pro/
-// @version      53.10.0
+// @version      53.11.0
 // @description  
 // @match        https://laserhall.simprint.pro/axiom/index_postpress.php
 // @grant        none
@@ -1368,6 +1368,21 @@ async function checkOrderSections(orderId, orderNum) {
         return (tmp.textContent || '').replace(/\s+/g, ' ').trim();
     }
 
+    function descCollapsed(html) {
+        const tmp = document.createElement('div');
+        tmp.innerHTML = String(html || '');
+        const kids = Array.from(tmp.children);
+        const texts = kids.map(el => (el.textContent || '').replace(/\s+/g, ' ').trim());
+
+        // первый заголовок = первый div с жирным стилем и текстом; если такого нет — первый непустой
+        let headerIdx = kids.findIndex((el, i) => texts[i] && /font-weight:\s*(600|700)/.test(el.getAttribute('style') || ''));
+        if (headerIdx === -1) headerIdx = texts.findIndex(t => t);
+        if (headerIdx === -1) return descPlain(html);
+
+        const more = texts.slice(headerIdx + 1).some(t => t);   // есть ли скрытое продолжение
+        return texts[headerIdx] + (more ? ' …' : '');
+    }
+
     function toggleRowCollapse(pid) {
         if (rowToggled.has(pid)) rowToggled.delete(pid); else rowToggled.add(pid);
         const row = [...(cacheShfLeft || []), ...(cacheShfRight || [])].find(r => r.productId === pid);
@@ -1409,9 +1424,9 @@ async function checkOrderSections(orderId, orderNum) {
                     } else {
                         resetCell(tdDesc, '0');
                         tdDesc.style.width = '60%';
-                        const plain = descPlain(row.cells[3].html || row.cells[3].text);
-                        tdDesc.textContent = plain || '—';
-                        tdDesc.title = plain;
+                        const short = descCollapsed(row.cells[3].html || row.cells[3].text);
+                        tdDesc.textContent = short || '—';
+                        tdDesc.title = descPlain(row.cells[3].html || row.cells[3].text);
                     }
                 }
             });
@@ -1450,10 +1465,11 @@ async function checkOrderSections(orderId, orderNum) {
                     if (idx === 1) { extra += 'max-width:240px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;'; titleAttr = ` title="${escapeHtml(c.text)}"`; }
                     if (idx === 2) { extra += 'max-width:160px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;'; titleAttr = ` title="${escapeHtml(c.text)}"`; }
                     if (idx === 3) {
-                        const plain = descPlain(c.html || c.text);
-                        content = escapeHtml(plain);
+                        const short = descCollapsed(c.html || c.text);
+                        const full = descPlain(c.html || c.text);
+                        content = escapeHtml(short);
                         extra += 'max-width:0;width:60%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;';
-                        titleAttr = ` title="${escapeHtml(plain)}"`;
+                        titleAttr = ` title="${escapeHtml(full)}"`;
                     }
                 }
 
@@ -2002,7 +2018,7 @@ async function checkOrderSections(orderId, orderNum) {
                     if (matchTr.children[3] && row.cells[2]) matchTr.children[3].textContent = row.cells[2].text;
                     if (matchTr.children[4] && row.cells[3]) {
                         if (rowIsExpanded(row.productId)) matchTr.children[4].innerHTML = row.cells[3].html || row.cells[3].text;
-                        else matchTr.children[4].textContent = descPlain(row.cells[3].html || row.cells[3].text) || '—';
+                        else matchTr.children[4].textContent = descCollapsed(row.cells[3].html || row.cells[3].text) || '—';
                     }
                     if (matchTr.children[5] && row.cells[4]) matchTr.children[5].textContent = row.cells[4].text;
                     const lastTd = matchTr.lastElementChild;
